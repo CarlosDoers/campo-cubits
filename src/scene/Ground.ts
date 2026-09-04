@@ -48,14 +48,20 @@ const softMirrorShader = {
     }`,
 };
 
-/** Suelo de cristal oscuro que refleja el campo, rejilla tenue y cúpula degradada. */
+const DIE_MARGIN = 1.3; // sustrato que sobresale de la retícula
+const DIE_THICK = 0.34;
+const DIE_TOP = 0.06; // cara superior del sustrato
+const DIE_CORNER = 0.9;
+
+/** Suelo de cristal oscuro, rejilla tenue, cúpula y el **sustrato del chip**. */
 export class Ground {
   readonly group = new THREE.Group();
 
   private readonly gridMat: THREE.ShaderMaterial;
   private readonly skyMat: THREE.ShaderMaterial;
+  private readonly rimMat: THREE.LineBasicMaterial;
 
-  constructor(size = 240) {
+  constructor(chipWidth: number, chipDepth: number, size = 240) {
     const mirror = new Reflector(new THREE.PlaneGeometry(size, size), {
       clipBias: 0.003,
       textureWidth: 1024,
@@ -125,12 +131,50 @@ export class Ground {
     });
     const sky = new THREE.Mesh(new THREE.SphereGeometry(80, 32, 16), this.skyMat);
 
-    this.group.add(mirror, grid, sky);
+    const { die, rim, rimMat } = this.buildDie(chipWidth, chipDepth);
+    this.rimMat = rimMat;
+
+    this.group.add(mirror, grid, sky, die, rim);
   }
 
-  /** Atenúa suelo y cielo al enfocar un territorio (`focus` de 0 a 1). */
+  /**
+   * El sustrato: una pastilla de esquinas redondeadas bajo la retícula, con el borde
+   * marcado. Sin él, los 156 cúbits se leen como una textura que se sale del encuadre;
+   * con él, el campo es **una pieza** con principio y final.
+   */
+  private buildDie(chipWidth: number, chipDepth: number) {
+    const w = chipWidth / 2 + DIE_MARGIN;
+    const d = chipDepth / 2 + DIE_MARGIN;
+    const r = DIE_CORNER;
+
+    const shape = new THREE.Shape();
+    shape.moveTo(-w + r, -d);
+    shape.lineTo(w - r, -d);
+    shape.quadraticCurveTo(w, -d, w, -d + r);
+    shape.lineTo(w, d - r);
+    shape.quadraticCurveTo(w, d, w - r, d);
+    shape.lineTo(-w + r, d);
+    shape.quadraticCurveTo(-w, d, -w, d - r);
+    shape.lineTo(-w, -d + r);
+    shape.quadraticCurveTo(-w, -d, -w + r, -d);
+
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: DIE_THICK, bevelEnabled: false });
+    geo.rotateX(-Math.PI / 2); // la silueta pasa del plano XY al XZ
+    geo.translate(0, DIE_TOP - DIE_THICK, 0);
+    const die = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x070d16 }));
+
+    // Borde superior iluminado: es lo que dibuja la silueta de la pieza.
+    const pts = shape.getPoints(96).map((p) => new THREE.Vector3(p.x, DIE_TOP + 0.004, p.y));
+    const rimMat = new THREE.LineBasicMaterial({ color: 0x4fd0ee, transparent: true, opacity: 0.55 });
+    const rim = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), rimMat);
+
+    return { die, rim, rimMat };
+  }
+
+  /** Atenúa suelo, cielo y borde al enfocar un territorio (`focus` de 0 a 1). */
   setFocus(focus: number): void {
     this.gridMat.uniforms.uDim.value = 1 - 0.6 * focus;
     this.skyMat.uniforms.uDim.value = 1 - 0.55 * focus;
+    this.rimMat.opacity = 0.55 * (1 - 0.6 * focus);
   }
 }

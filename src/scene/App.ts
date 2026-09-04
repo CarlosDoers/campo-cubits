@@ -17,8 +17,15 @@ interface Pose {
   target: THREE.Vector3;
 }
 
-/** Plano general: todo el campo a la vista. */
-const OVERVIEW: Pose = { position: new THREE.Vector3(0, 11.5, 18.5), target: new THREE.Vector3(0, 0, 0.5) };
+/** Inclinacion del plano general: cuanto se mira el chip desde arriba. */
+const OVERVIEW_PITCH = 0.8;
+/**
+ * Inclinación al enfocar un territorio: mucho más rasante que el plano general, para
+ * que el chip se vea casi de canto y las subsecciones se lean flotando **sobre** él.
+ * Debe quedar por debajo de `maxPolarAngle`, o los controles la recortarían al soltar.
+ */
+const FOCUS_PITCH = 0.3;
+const UP = new THREE.Vector3(0, 1, 0);
 const FLIGHT_SECONDS = 1.6;
 
 export class App {
@@ -41,9 +48,12 @@ export class App {
   /** 0 = plano general, 1 = un territorio enfocado (el resto se atenúa). */
   private focus = 0;
   private flight: { from: Pose; to: Pose; t: number } | null = null;
+  /** Plano general, recalculado con el tamano del chip y la forma del encuadre. */
+  private overview: Pose = { position: new THREE.Vector3(), target: new THREE.Vector3() };
+  private lastStatus = '';
 
   private readonly field: QubitField;
-  private readonly ground = new Ground();
+  private readonly ground: Ground;
   private readonly dust = new Dust();
 
   constructor(
@@ -72,10 +82,9 @@ export class App {
     this.scene.fog = new THREE.FogExp2(0x04070f, 0.02);
 
     this.camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 200);
-    this.camera.position.copy(OVERVIEW.position);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.target.copy(OVERVIEW.target);
+    this.controls.target.set(0, 0, 0);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.06;
     this.controls.enablePan = false;
@@ -88,7 +97,12 @@ export class App {
 
     // --- objetos ---
     this.field = new QubitField(items, QUBIT_COUNT);
+    this.ground = new Ground(this.field.topology.width, this.field.topology.depth);
     this.scene.add(this.field.group, this.ground.group, this.dust.points);
+
+    this.fitOverview();
+    this.camera.position.copy(this.overview.position);
+    this.controls.target.copy(this.overview.target);
 
     // --- postprocesado ---
     this.composer = new EffectComposer(this.renderer);
@@ -106,10 +120,10 @@ export class App {
     if (item) {
       this.overlay.showItem(item);
       const p = this.field.hubPosition(item.id);
-      if (p) this.flyTo(focusPose(p));
+      if (p) this.flyTo(this.focusPose(p));
     } else {
       this.overlay.hide();
-      this.flyTo(OVERVIEW);
+      this.flyTo(this.overview);
     }
     this.controls.autoRotate = !item;
   }
@@ -146,7 +160,12 @@ export class App {
       this.controls.update();
     }
 
-    this.field.update(dt, this.focus);
+    // Azimut de la cámara: orienta el reparto de las subsecciones hacia el espectador.
+    const camAz = Math.atan2(
+      this.camera.position.x - this.controls.target.x,
+      this.camera.position.z - this.controls.target.z,
+    );
+    this.field.update(dt, this.focus, camAz);
     this.ground.setFocus(this.focus);
     this.dust.update(dt, this.focus);
 
@@ -157,6 +176,12 @@ export class App {
     if (this.field.booted !== this.lastCount) {
       this.lastCount = this.field.booted;
       this.overlay.setQubitCount(this.lastCount);
+    }
+
+    const status = this.field.circuit.status;
+    if (status !== this.lastStatus) {
+      this.lastStatus = status;
+      this.overlay.setCircuit(status);
     }
 
     this.composer.render();
@@ -228,13 +253,49 @@ export class App {
     this.renderer.setSize(w, h);
     this.composer.setSize(w, h);
     this.labelRenderer.setSize(w, h);
+    this.fitOverview();
+    if (!this.flight && !this.field.selected) {
+      this.camera.position.copy(this.overview.position);
+      this.controls.target.copy(this.overview.target);
+    }
   }
-}
 
-/** Cámara elevada frente al territorio, con el cúbit desplazado a la izquierda para dejar sitio al panel. */
-function focusPose(p: THREE.Vector3): Pose {
-  return {
-    position: new THREE.Vector3(p.x + 1.6, 7.2, p.z + 8.0),
-    target: new THREE.Vector3(p.x + 1.6, 1.8, p.z - 0.8),
-  };
+  /**
+   * Coloca el plano general para que el chip entero quepa en el encuadre, por el lado
+   * mas estrecho. Sin esto el campo se sale por abajo y por los lados y deja de leerse
+   * como una pieza.
+   */
+  private fitOverview(): void {
+    const { width, depth } = this.field.topology;
+    const vFov = THREE.MathUtils.degToRad(this.camera.fov);
+    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * this.camera.aspect);
+    // El chip gira despacio, asi que el caso peor no es su lado mayor sino su diagonal.
+    const half = Math.hypot(width, depth) / 2 + 1.8;
+    const dist = Math.max(half / Math.tan(hFov / 2), (half * Math.sin(OVERVIEW_PITCH)) / Math.tan(vFov / 2)) + 2;
+    this.overview.target.set(0, 0.4, 0);
+    this.overview.position.set(0, dist * Math.sin(OVERVIEW_PITCH), dist * Math.cos(OVERVIEW_PITCH));
+  }
+
+  /**
+   * Enfoque de un territorio: la camara baja y se acerca, pero **sin dejar de ver el
+   * chip**. El toten queda a la izquierda para dejarle sitio al panel.
+   */
+  private focusPose(p: THREE.Vector3): Pose {
+    // Se conserva el azimut actual —la transicion se lee como un empujon de camara, no
+    // como un salto a otro sitio— pero la camara baja hasta `FOCUS_PITCH`.
+    const az = Math.atan2(
+      this.camera.position.x - this.controls.target.x,
+      this.camera.position.z - this.controls.target.z,
+    );
+    const dir = new THREE.Vector3(
+      Math.sin(az) * Math.cos(FOCUS_PITCH),
+      Math.sin(FOCUS_PITCH),
+      Math.cos(az) * Math.cos(FOCUS_PITCH),
+    );
+    const right = new THREE.Vector3().crossVectors(UP, dir).normalize();
+    const dist = this.overview.position.distanceTo(this.overview.target) * 0.62;
+    // El objetivo se corre a la derecha para que el toten quede a la izquierda del panel.
+    const target = new THREE.Vector3(p.x, 2.1, p.z).addScaledVector(right, 3.4);
+    return { position: target.clone().addScaledVector(dir, dist), target };
+  }
 }

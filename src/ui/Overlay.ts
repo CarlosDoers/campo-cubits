@@ -11,6 +11,7 @@ export class Overlay {
   private readonly list: HTMLElement;
   private readonly toastEl: HTMLElement;
   private readonly qubitCount: HTMLElement;
+  private readonly circuitLine: HTMLElement;
   private toastTimer = 0;
 
   constructor(root: HTMLElement) {
@@ -20,6 +21,7 @@ export class Overlay {
     this.list = root.querySelector('.panel-list')!;
     this.toastEl = root.querySelector('#toast')!;
     this.qubitCount = root.querySelector('#qubit-count')!;
+    this.circuitLine = root.querySelector('#circuit')!;
 
     root.querySelector('.panel-close')!.addEventListener('click', () => this.onClose());
   }
@@ -50,6 +52,11 @@ export class Overlay {
 
   setQubitCount(n: number): void {
     this.qubitCount.textContent = String(n);
+  }
+
+  /** Qué está haciendo el chip ahora mismo (capa del circuito, medida, reposo). */
+  setCircuit(text: string): void {
+    this.circuitLine.textContent = text;
   }
 
   hide(): void {
