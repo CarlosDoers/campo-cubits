@@ -1,0 +1,62 @@
+{
+  "$comment": "Contenido del menú. Cada territorio es un cúbit destacado sobre la esfera; sus items se despegan como subsecciones al seleccionarlo. Industria, Laboratorio y Ecosistema llevan items provisionales a la espera del contenido del cliente.",
+  "territorios": [
+    {
+      "id": "industria",
+      "label": "Industria",
+      "color": "#ffc857",
+      "description": "Lleva la computación cuántica a los retos reales de las empresas.",
+      "items": [
+        { "id": "casos-de-uso", "label": "Casos de uso", "description": "Optimización, materiales, finanzas y logística." },
+        { "id": "colaboracion", "label": "Colaboración empresarial", "description": "Proyectos conjuntos con el ecosistema industrial." },
+        { "id": "formacion", "label": "Formación a medida", "description": "Capacitación cuántica para equipos técnicos." }
+      ]
+    },
+    {
+      "id": "laboratorio",
+      "label": "Laboratorio",
+      "color": "#ff4fd8",
+      "description": "IBM Quantum System Two con procesador Heron de 156 cúbits, en Donostia.",
+      "items": [
+        { "id": "infraestructura", "label": "Infraestructura", "description": "El sistema, el procesador y su entorno criogénico." },
+        { "id": "acceso", "label": "Acceso", "description": "Cómo ejecutar experimentos en el ordenador cuántico." },
+        { "id": "proyectos", "label": "Proyectos", "description": "Trabajos en curso sobre la máquina." }
+      ]
+    },
+    {
+      "id": "grado",
+      "label": "Grado",
+      "color": "#4fe3ff",
+      "description": "Formación académica de excelencia con enfoque cuántico, innovación y visión global.",
+      "items": [
+        { "id": "que-aprenderas", "label": "Qué aprenderás", "description": "Fundamentos cuánticos, herramientas avanzadas y aplicaciones reales." },
+        { "id": "plan-de-estudios", "label": "Plan de estudios", "description": "8 semestres · 42 asignaturas · 320 créditos" },
+        { "id": "salidas", "label": "Salidas", "description": "Investigación · Industria · Emprendimiento" }
+      ]
+    },
+    {
+      "id": "ciencia",
+      "label": "Ciencia",
+      "color": "#9b7bff",
+      "description": "Impulsa la investigación cuántica aplicada para resolver desafíos reales y futuros.",
+      "items": [
+        { "id": "investigacion-aplicada", "label": "Investigación aplicada", "description": "Desarrollo de soluciones cuánticas con impacto real." },
+        { "id": "colaboracion-cientifica", "label": "Colaboración científica", "description": "Alianzas con instituciones y expertos globales." },
+        { "id": "innovacion-continua", "label": "Innovación continua", "description": "Nuevas ideas que expanden los límites de lo posible." },
+        { "id": "impacto-futuro", "label": "Impacto en el futuro", "description": "Ciencia que transforma industrias y sociedades." }
+      ]
+    },
+    {
+      "id": "ecosistema",
+      "label": "Ecosistema",
+      "color": "#7dff8f",
+      "description": "La comunidad cuántica de Euskadi: instituciones, empresas y talento.",
+      "items": [
+        { "id": "instituciones", "label": "Instituciones", "description": "Centros, universidades y administraciones." },
+        { "id": "startups", "label": "Startups", "description": "Empresas emergentes en tecnologías cuánticas." },
+        { "id": "eventos", "label": "Eventos", "description": "Encuentros, jornadas y divulgación." },
+        { "id": "comunidad", "label": "Comunidad", "description": "Personas que construyen el ecosistema." }
+      ]
+    }
+  ]
+}

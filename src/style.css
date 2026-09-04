@@ -1,0 +1,187 @@
+:root {
+  --bg: #02040a;
+  --fg: #e6f1ff;
+  --muted: rgba(230, 241, 255, 0.5);
+  --accent: #6ee7ff;
+  --font: "Inter", "SF Pro Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app { position: fixed; inset: 0; }
+#app canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+#app canvas:active { cursor: grabbing; }
+#app.is-hover canvas { cursor: pointer; }
+
+/* Capa de interfaz HTML */
+#ui { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+
+.brand {
+  position: absolute; top: 28px; left: 32px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.brand-title { font-size: 20px; font-weight: 700; letter-spacing: 0.45em; }
+.brand-sub { font-size: 10px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--muted); }
+
+.hint {
+  position: absolute; left: 32px; bottom: 28px;
+  display: flex; gap: 10px; flex-wrap: wrap;
+  font-size: 10px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--muted);
+}
+.hint .sep { opacity: 0.4; }
+
+/* ---------- Ficha del sistema (156 cúbits) ---------- */
+.hud {
+  position: absolute; right: 32px; bottom: 28px;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+  text-align: right;
+}
+.hud-count { display: flex; align-items: baseline; gap: 10px; }
+.hud-count #qubit-count {
+  font-family: var(--mono); font-size: 40px; font-weight: 300; line-height: 1;
+  letter-spacing: 0.06em; color: #fff;
+  text-shadow: 0 0 18px rgba(102, 234, 255, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+.hud-unit { font-size: 11px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--accent); }
+.hud-lines { display: flex; flex-direction: column; gap: 3px; }
+.hud-lines span { font-size: 9.5px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted); }
+.hud-lines span:first-child { color: rgba(230, 241, 255, 0.8); }
+
+/* ---------- Etiquetas 3D (CSS2DRenderer) ---------- */
+.ket-label {
+  font-family: var(--serif); font-size: 13px;
+  color: rgba(230, 241, 255, 0.8);
+  text-shadow: 0 0 8px rgba(120, 230, 255, 0.7);
+}
+
+.hub-label span {
+  display: inline-block; white-space: nowrap;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.26em; text-transform: uppercase;
+  color: var(--c); opacity: 0.8;
+  text-shadow: 0 0 10px var(--c), 0 0 2px #000;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+.hub-label.hover span, .hub-label.selected span { opacity: 1; transform: scale(1.18); }
+.hub-label.dim span { opacity: 0.22; }
+
+.sub-label span {
+  display: inline-block; white-space: nowrap;
+  padding: 5px 10px; border-radius: 999px;
+  font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase;
+  color: rgba(230, 241, 255, 0.92);
+  background: rgba(4, 8, 18, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 14px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 0 8px var(--c);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: transform 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+.sub-label.hover span { color: #fff; border-color: var(--c); transform: scale(1.08); }
+
+.qubit-tip span {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em;
+  color: rgba(143, 240, 255, 0.9);
+  text-shadow: 0 0 8px rgba(143, 240, 255, 0.8), 0 0 2px #000;
+  white-space: nowrap;
+}
+
+/* ---------- Panel lateral del submenú ---------- */
+.panel {
+  position: absolute; right: 32px; top: 50%;
+  width: min(340px, calc(100vw - 64px));
+  padding: 30px 28px 22px;
+  border-radius: 20px;
+  background: rgba(6, 10, 20, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), inset 0 0 80px rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  transform: translate(28px, -50%);
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear 0.35s;
+}
+.panel.open {
+  opacity: 1; visibility: visible; pointer-events: auto;
+  transform: translate(0, -50%);
+  transition-delay: 0s;
+}
+.panel::before {
+  content: ""; position: absolute; left: 28px; right: 28px; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+.panel-close {
+  position: absolute; top: 14px; right: 16px;
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.12); background: transparent;
+  color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.panel-close:hover { color: #fff; border-color: rgba(255, 255, 255, 0.4); }
+.panel-kicker { font-size: 10px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--accent); }
+.panel-title { margin: 8px 0 6px; font-size: 26px; font-weight: 700; letter-spacing: 0.02em; }
+.panel-desc { margin: 0 0 18px; font-size: 13px; line-height: 1.55; color: var(--muted); }
+.panel-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.panel-list button {
+  width: 100%; text-align: left;
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 14px; border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--fg); font: inherit; font-size: 13px; letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+}
+.panel-list button:hover { background: rgba(255, 255, 255, 0.07); border-color: var(--accent); transform: translateX(3px); }
+.panel-list button .dot {
+  width: 8px; height: 8px; border-radius: 50%; flex: none;
+  background: var(--accent); box-shadow: 0 0 10px var(--accent);
+}
+.panel-list button .arrow { margin-left: auto; opacity: 0.35; }
+.panel-list button small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+.panel-foot { margin-top: 18px; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); opacity: 0.6; }
+
+/* ---------- Toast ---------- */
+.toast {
+  position: absolute; left: 50%; bottom: 34px;
+  transform: translate(-50%, 12px);
+  padding: 10px 18px; border-radius: 999px;
+  background: rgba(6, 10, 20, 0.7); border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  font-size: 12px; letter-spacing: 0.08em;
+  opacity: 0; transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast b { color: var(--accent); font-weight: 600; }
+
+@media (max-width: 640px) {
+  .brand { top: 20px; left: 20px; }
+  .hint { left: 20px; bottom: 20px; }
+  .hud { right: 20px; bottom: 56px; }
+  .hud-lines { display: none; }
+  .panel { right: 16px; left: 16px; top: auto; bottom: 16px; width: auto; transform: translate(0, 28px); }
+  .panel.open { transform: translate(0, 0); }
+  .panel.open ~ .hud { display: none; }
+}
+
+/* ---------- Propuesta 2: campo de cúbits ---------- */
+.hub-label span { font-size: 12px; letter-spacing: 0.3em; }
+.sub-label span { font-size: 11px; }
+.panel-foot { letter-spacing: 0.18em; }
+
+/* Separación en pantalla de los chips de subsección (la calcula QubitField) */
+.sub-label span { transform: translateY(var(--dy, 0px)); }
+.sub-label.hover span { transform: translateY(var(--dy, 0px)) scale(1.08); }

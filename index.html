@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#02040a" />
+    <title>Campo · Menú</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Cpolygon points=%2716,4 26,10 26,22 16,28 6,22 6,10%27 fill=%27none%27 stroke=%27%2366eaff%27 stroke-width=%272%27/%3E%3Ccircle cx=%2716%27 cy=%274%27 r=%272.4%27 fill=%27%23ff4fd8%27/%3E%3Ccircle cx=%2726%27 cy=%2722%27 r=%272.4%27 fill=%27%2366eaff%27/%3E%3Ccircle cx=%276%27 cy=%2722%27 r=%272.4%27 fill=%27%2366eaff%27/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <div id="ui">
+      <header class="brand">
+        <span class="brand-title">CAMPO</span>
+        <span class="brand-sub">Donostia · Quantum System Two</span>
+      </header>
+
+      <div class="hint">
+        <span>Arrastra para orbitar</span>
+        <span class="sep">·</span>
+        <span>Rueda para acercar</span>
+        <span class="sep">·</span>
+        <span>Pulsa un territorio</span>
+      </div>
+
+      <aside id="panel" class="panel" aria-hidden="true">
+        <button class="panel-close" type="button" aria-label="Cerrar">×</button>
+        <div class="panel-kicker">Territorio</div>
+        <h2 class="panel-title"></h2>
+        <p class="panel-desc"></p>
+        <ul class="panel-list"></ul>
+        <div class="panel-foot">Esc para volver al campo</div>
+      </aside>
+
+      <aside class="hud" aria-label="Sistema cuántico">
+        <div class="hud-count"><span id="qubit-count">0</span><span class="hud-unit">cúbits</span></div>
+        <div class="hud-lines">
+          <span>IBM Quantum System Two</span>
+          <span>Procesador IBM Quantum Heron · retícula heavy-hex</span>
+          <span>Centro de Computación Cuántica IBM-Euskadi · Ikerbasque · Donostia</span>
+        </div>
+      </aside>
+
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
