@@ -115,6 +115,35 @@ Con un solo acento la jerarquía es automática. Las reglas de la casa:
   todo es un micro-label espaciado no hay jerarquía tipográfica, solo textura.
 - Nada de `backdrop-filter`, radios grandes, sombras enormes ni degradados de borde.
 
+## Rendimiento
+
+Los dos proyectos son **fill-rate bound**, no CPU bound. Medido con consultas de tiempo de
+GPU (`EXT_disjoint_timer_query_webgl2`) sobre el propio contexto, a 1920×907: el hilo
+principal gastaba menos de 2 ms por fotograma —`update`, raycast y etiquetas 2D juntos— y
+la GPU se llevaba más de 10. Ocultar la retícula entera no cambiaba nada: la geometría es
+gratis. Dos cambios, ninguno visible:
+
+- **Fuera el `antialias` del lienzo.** La escena nunca llega al búfer del lienzo: se dibuja
+  en el render target del `EffectComposer`, que va sin multimuestreo, y al lienzo solo llega
+  el cuadrilátero a pantalla completa de `OutputPass`, que no tiene bordes que suavizar.
+  Comprobado en el contexto: `SAMPLES` del lienzo 4, del render target 0. Se estaba
+  reservando, escribiendo y resolviendo un búfer de 4 muestras cada fotograma sin suavizar
+  un solo píxel.
+- **Bloom a un cuarto de resolución.** Es un desenfoque, así que bajarle la resolución no se
+  nota, y cuesta la cuarta parte de relleno. Hay que envolver su `setSize`, porque
+  `EffectComposer` reenvía el tamaño a todas las pasadas al redimensionar y si no se
+  recupera sola. Y el tamaño inicial se toma del **búfer de dibujo**, no de píxeles CSS: el
+  composer reparte ya multiplicado por el `pixelRatio`, así que en una pantalla Retina
+  arrancaría a un octavo y saltaría a un cuarto al primer cambio de ventana.
+
+Resultado, en el mismo equipo y encuadre: mediana de GPU de **12,5 ms a 3,7 ms** por fotograma. Las cifras absolutas dependen de la GPU
+—estas salen de un Chrome de pruebas, más lento que un portátil normal—; lo que se traslada
+es la proporción.
+
+Si hiciera falta más margen en pantallas Retina, la palanca que queda es
+`renderer.setPixelRatio`, hoy topado en 2. Bajarlo a 1,5 recorta el relleno casi a la
+mitad, pero eso **sí** se ve: es nitidez, no un efecto de más.
+
 ## Stack
 
 - [Vite](https://vite.dev) + TypeScript

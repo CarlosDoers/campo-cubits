@@ -96,7 +96,13 @@ export class App {
     const h = container.clientHeight;
 
     // --- renderers ---
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    // Sin `antialias`. La escena **nunca llega al búfer del lienzo**: se dibuja en el
+    // render target del `EffectComposer`, que va sin multimuestreo, y al lienzo solo llega
+    // el cuadrilátero a pantalla completa de `OutputPass`, que no tiene bordes que suavizar.
+    // Pedirlo reservaba un búfer de 4 muestras que se escribía y se resolvía entero cada
+    // fotograma sin suavizar un solo píxel de la escena. Medido en el propio contexto:
+    // `SAMPLES` del lienzo 4, del render target 0.
+    this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(w, h);
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -145,7 +151,23 @@ export class App {
     // --- postprocesado ---
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.32, 0.8, 0.62));
+    /**
+     * Bloom a un cuarto de resolución. Es un desenfoque, así que bajarle la resolución no
+     * se nota —si acaso queda un punto más suave— pero cuesta la cuarta parte de relleno,
+     * y medido con consultas de tiempo de GPU era casi la mitad del fotograma.
+     * `EffectComposer.setSize` reenvía el tamaño del lienzo a todas las pasadas al
+     * redimensionar, así que hay que envolverlo o la resolución se recupera sola en cuanto
+     * cambie la ventana.
+     */
+    const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), 0.32, 0.8, 0.62);
+    const bloomSetSize = bloom.setSize.bind(bloom);
+    bloom.setSize = (bw: number, bh: number) => bloomSetSize(bw / 2, bh / 2);
+    // En píxeles del búfer, no en CSS: `EffectComposer.setSize` reparte ya multiplicado
+    // por el `pixelRatio`, así que arrancar en CSS dejaría el bloom a un octavo en una
+    // pantalla Retina y lo subiría a un cuarto en cuanto se tocara la ventana.
+    const buffer = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    bloom.setSize(buffer.x, buffer.y);
+    this.composer.addPass(bloom);
     this.composer.addPass(new OutputPass());
 
     this.bindEvents();
