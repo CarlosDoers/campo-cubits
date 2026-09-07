@@ -10,7 +10,17 @@ export type HitInfo =
   | { kind: 'sub'; itemId: string; subId: string }
   | { kind: 'qubit'; index: number };
 
-const BOOT_RATE = 62; // cúbits por segundo durante el arranque
+/**
+ * Arranque. Es lo primero que ve nadie, así que en vez de encender los cúbits por orden
+ * de índice se hace en tres tiempos: primero el sustrato se dibuja solo (`Ground`),
+ * después un **frente de encendido** cruza el chip en diagonal y va levantando los
+ * cúbits desde debajo del sustrato, y los acopladores prenden justo detrás. Cada cúbit
+ * da un destello al llegar arriba y remata con un pequeño rebote.
+ */
+const BOOT_LEAD = 0.55; // lo que se espera a que el sustrato se dibuje
+const BOOT_SWEEP = 1.9; // lo que tarda el frente en cruzar el chip
+const BOOT_RISE = 0.55; // lo que tarda un cúbit en subir y encenderse
+const BOOT_DROP = 1.3; // desde dónde sube, por debajo del sustrato
 const REST_DIM = 0.24; // intensidad que conserva lo no enfocado: el chip sigue a la vista
 const IDLE = 0.42; // brillo de un cúbit en reposo: deja sitio a que la puerta destaque
 const BASE_Y = 0.55; // altura a la que flota la retícula sobre el sustrato
@@ -47,6 +57,8 @@ const READ_ZERO = new THREE.Color(0x3b6cff); // cúbit medido a |0⟩
 
 interface Qubit {
   node: QubitNode;
+  /** Sitio en el frente de encendido, 0..1 según su posición en la diagonal. */
+  bootDelay: number;
   size: number;
   pos: THREE.Vector3;
   lift: number;
@@ -132,6 +144,7 @@ export class QubitField {
     for (const node of this.topology.nodes) {
       this.qubits.push({
         node,
+        bootDelay: 0,
         size: node.bridge ? BRIDGE_SIZE : QUBIT_SIZE,
         pos: new THREE.Vector3(node.x, BASE_Y, node.z),
         lift: 0,
@@ -146,6 +159,15 @@ export class QubitField {
         targetColor: BASE.clone(),
       });
     }
+
+    // El frente entra en diagonal: se proyecta cada cúbit sobre esa dirección y se
+    // normaliza contra el rango real, para que barra el chip entero de punta a punta.
+    const proj = this.qubits.map((q) => q.node.x * 0.72 + q.node.z * 0.69);
+    const lo = Math.min(...proj);
+    const span = Math.max(...proj) - lo || 1;
+    this.qubits.forEach((q, i) => {
+      q.bootDelay = (proj[i] - lo) / span;
+    });
 
     this.mesh = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 14, 10), new THREE.MeshBasicMaterial({ color: 0xffffff }), n);
     this.hitMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.24, 6, 5), invisible(), n);
@@ -162,7 +184,14 @@ export class QubitField {
 
   /** Cúbits ya "encendidos" durante la animación de arranque. */
   get booted(): number {
-    return Math.min(this.qubits.length, Math.floor(this.time * BOOT_RATE));
+    let n = 0;
+    for (let i = 0; i < this.qubits.length; i++) if (this.bootOf(i) > 0.5) n++;
+    return n;
+  }
+
+  /** Mientras dura el arranque el circuito espera: primero se enciende la máquina. */
+  get booting(): boolean {
+    return this.time < BOOT_LEAD + BOOT_SWEEP + BOOT_RISE;
   }
 
   get selected(): string | null {
@@ -219,7 +248,7 @@ export class QubitField {
     const rest = 1 - (1 - REST_DIM) * focus;
     const hoverIndex = this.hoverIndex();
 
-    this.circuit.update(dt);
+    if (!this.booting) this.circuit.update(dt);
 
     // Marco horizontal de la cámara: `right` va hacia la derecha de la pantalla y
     // `away` se aleja del espectador.
@@ -285,11 +314,13 @@ export class QubitField {
       const breathe = BREATH * Math.sin(t * 0.8 + q.node.x * 0.35 + q.node.z * 0.22);
       q.pos.set(
         q.node.x + q.sx,
-        BASE_Y + breathe + q.lift + 0.16 * q.hover - 1.1 * (1 - boot),
+        BASE_Y + breathe + q.lift + 0.16 * q.hover - BOOT_DROP * (1 - backOut(boot)),
         q.node.z + q.sz,
       );
 
-      q.pulseVis = easeTo(q.pulseVis, this.circuit.pulse[i] * q.damp, dt, 13);
+      // Destello al encenderse: una campana que sube y baja durante la subida.
+      const ignition = 4 * boot * (1 - boot);
+      q.pulseVis = easeTo(q.pulseVis, Math.max(this.circuit.pulse[i] * q.damp, ignition), dt, 13);
       const gate = q.pulseVis * rest;
       const read = this.circuit.readout[i];
       this.dummy.position.copy(q.pos);
@@ -528,7 +559,8 @@ export class QubitField {
   }
 
   private bootOf(i: number): number {
-    return THREE.MathUtils.smoothstep(this.time * BOOT_RATE - i, 0, 10);
+    const t = this.time - BOOT_LEAD - this.qubits[i].bootDelay * BOOT_SWEEP;
+    return THREE.MathUtils.smoothstep(t / BOOT_RISE, 0, 1);
   }
 
   private hoverIndex(): number {
@@ -545,6 +577,12 @@ export class QubitField {
     if (hit.kind === 'item') hub.label.element.classList.toggle('hover', on);
     else hub.subs.find((s) => s.sub.id === hit.subId)?.label.element.classList.toggle('hover', on);
   }
+}
+
+/** Suavizado con rebote: el cúbit se pasa un poco de su sitio y vuelve. */
+function backOut(t: number): number {
+  const u = t - 1;
+  return 1 + 2.2 * u * u * u + 1.2 * u * u;
 }
 
 function sameHit(a: HitInfo | null, b: HitInfo | null): boolean {

@@ -27,6 +27,11 @@ const OVERVIEW_PITCH = 0.8;
 const FOCUS_PITCH = 0.3;
 const UP = new THREE.Vector3(0, 1, 0);
 const FLIGHT_SECONDS = 1.6;
+/** Retirada de cámara de la entrada: acompaña al encendido del chip. */
+const INTRO_SECONDS = 3.4;
+const INTRO_PITCH = 0.2; // arranca casi a ras del sustrato
+const INTRO_AZIMUTH = 0.75;
+const INTRO_ZOOM = 0.5; // y a la mitad de distancia que el plano general
 
 export class App {
   /** Se invoca al pulsar una subsección (pilar 3D o botón del panel). */
@@ -47,7 +52,7 @@ export class App {
 
   /** 0 = plano general, 1 = un territorio enfocado (el resto se atenúa). */
   private focus = 0;
-  private flight: { from: Pose; to: Pose; t: number } | null = null;
+  private flight: { from: Pose; to: Pose; t: number; seconds: number } | null = null;
   /** Plano general, recalculado con el tamano del chip y la forma del encuadre. */
   private overview: Pose = { position: new THREE.Vector3(), target: new THREE.Vector3() };
   private lastStatus = '';
@@ -101,8 +106,16 @@ export class App {
     this.scene.add(this.field.group, this.ground.group, this.dust.points);
 
     this.fitOverview();
-    this.camera.position.copy(this.overview.position);
     this.controls.target.copy(this.overview.target);
+    // Entrada: la cámara empieza cerca y casi a ras, y se retira al plano general
+    // mientras el frente de encendido cruza el chip.
+    const d = this.overview.position.distanceTo(this.overview.target) * INTRO_ZOOM;
+    this.camera.position.set(
+      this.overview.target.x + Math.sin(INTRO_AZIMUTH) * d * Math.cos(INTRO_PITCH),
+      this.overview.target.y + d * Math.sin(INTRO_PITCH),
+      this.overview.target.z + Math.cos(INTRO_AZIMUTH) * d * Math.cos(INTRO_PITCH),
+    );
+    this.flyTo(this.overview, INTRO_SECONDS);
 
     // --- postprocesado ---
     this.composer = new EffectComposer(this.renderer);
@@ -129,11 +142,12 @@ export class App {
   }
 
   /** Vuelo suave de cámara hasta una pose; los controles se reactivan al llegar. */
-  private flyTo(to: Pose): void {
+  private flyTo(to: Pose, seconds = FLIGHT_SECONDS): void {
     this.flight = {
       from: { position: this.camera.position.clone(), target: this.controls.target.clone() },
       to,
       t: 0,
+      seconds,
     };
     this.controls.enabled = false;
   }
@@ -147,7 +161,7 @@ export class App {
 
     if (this.flight) {
       const f = this.flight;
-      f.t = Math.min(1, f.t + dt / FLIGHT_SECONDS);
+      f.t = Math.min(1, f.t + dt / f.seconds);
       const s = f.t * f.t * (3 - 2 * f.t);
       this.camera.position.lerpVectors(f.from.position, f.to.position, s);
       this.controls.target.lerpVectors(f.from.target, f.to.target, s);
@@ -166,6 +180,7 @@ export class App {
       this.camera.position.z - this.controls.target.z,
     );
     this.field.update(dt, this.focus, camAz);
+    this.ground.update(dt);
     this.ground.setFocus(this.focus);
     this.dust.update(dt, this.focus);
 
@@ -178,7 +193,7 @@ export class App {
       this.overlay.setQubitCount(this.lastCount);
     }
 
-    const status = this.field.circuit.status;
+    const status = this.field.booting ? 'Encendiendo el procesador' : this.field.circuit.status;
     if (status !== this.lastStatus) {
       this.lastStatus = status;
       this.overlay.setCircuit(status);

@@ -52,6 +52,7 @@ const DIE_MARGIN = 1.3; // sustrato que sobresale de la retícula
 const DIE_THICK = 0.34;
 const DIE_TOP = 0.06; // cara superior del sustrato
 const DIE_CORNER = 0.9;
+const RIM_DRAW_SECONDS = 0.9; // lo que tarda el borde en trazarse al arrancar
 
 /** Suelo de cristal oscuro, rejilla tenue, cúpula y el **sustrato del chip**. */
 export class Ground {
@@ -60,6 +61,9 @@ export class Ground {
   private readonly gridMat: THREE.ShaderMaterial;
   private readonly skyMat: THREE.ShaderMaterial;
   private readonly rimMat: THREE.LineBasicMaterial;
+  private readonly rim: THREE.Line;
+  private readonly rimPoints: number;
+  private t = 0;
 
   constructor(chipWidth: number, chipDepth: number, size = 240) {
     const mirror = new Reflector(new THREE.PlaneGeometry(size, size), {
@@ -131,8 +135,10 @@ export class Ground {
     });
     const sky = new THREE.Mesh(new THREE.SphereGeometry(80, 32, 16), this.skyMat);
 
-    const { die, rim, rimMat } = this.buildDie(chipWidth, chipDepth);
+    const { die, rim, rimMat, rimPoints } = this.buildDie(chipWidth, chipDepth);
     this.rimMat = rimMat;
+    this.rim = rim;
+    this.rimPoints = rimPoints;
 
     this.group.add(mirror, grid, sky, die, rim);
   }
@@ -163,12 +169,26 @@ export class Ground {
     geo.translate(0, DIE_TOP - DIE_THICK, 0);
     const die = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x070d16 }));
 
-    // Borde superior iluminado: es lo que dibuja la silueta de la pieza.
+    // Borde superior iluminado: es lo que dibuja la silueta de la pieza. Va como `Line`
+    // abierta con el primer punto repetido al final, y no como `LineLoop`, para poder
+    // trazarlo poco a poco con `setDrawRange` en el arranque —un bucle cerrado a medias
+    // se cerraría con una cuerda recta y se vería el truco—.
     const pts = shape.getPoints(96).map((p) => new THREE.Vector3(p.x, DIE_TOP + 0.004, p.y));
+    pts.push(pts[0].clone());
     const rimMat = new THREE.LineBasicMaterial({ color: 0x4fd0ee, transparent: true, opacity: 0.55 });
-    const rim = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), rimMat);
+    const rimGeo = new THREE.BufferGeometry().setFromPoints(pts);
+    rimGeo.setDrawRange(0, 0);
+    const rim = new THREE.Line(rimGeo, rimMat);
 
-    return { die, rim, rimMat };
+    return { die, rim, rimMat, rimPoints: pts.length };
+  }
+
+  /** Traza el borde del sustrato al arrancar: es lo primero que aparece. */
+  update(dt: number): void {
+    if (this.t >= RIM_DRAW_SECONDS) return;
+    this.t += dt;
+    const p = Math.min(1, this.t / RIM_DRAW_SECONDS);
+    this.rim.geometry.setDrawRange(0, Math.ceil(p * this.rimPoints));
   }
 
   /** Atenúa suelo, cielo y borde al enfocar un territorio (`focus` de 0 a 1). */

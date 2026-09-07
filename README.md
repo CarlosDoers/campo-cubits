@@ -28,6 +28,22 @@ lo que pasa en la máquina:
   cúbit colapsa a |0⟩ (azul) o |1⟩ (rosa). El patrón se queda unos segundos y se
   desvanece. Al pasar el ratón por un cúbit ya medido, el tooltip da su valor.
 
+## Entrada
+
+El arranque va en tres tiempos, porque es lo primero que ve cualquiera:
+
+1. **0 – 0,9 s.** El borde del sustrato se traza solo, de una punta a la otra. El chip
+   todavía está apagado.
+2. **0,9 – 2,9 s.** Un **frente de encendido** cruza la pastilla en diagonal levantando
+   los cúbits desde debajo del sustrato: cada uno da un destello al subir y remata con
+   un pequeño rebote, y los acopladores prenden justo detrás del frente. El contador del
+   HUD sube de 0 a 156 al ritmo del frente.
+3. **3,05 s.** Arranca el circuito y el HUD pasa de «Encendiendo el procesador» a
+   contar capas.
+
+La cámara acompaña: empieza cerca y casi a ras del sustrato y se retira al plano general
+a lo largo de los 3,4 s, así que el chip se revela a la vez que se enciende.
+
 Los **territorios** son cúbits-tótem con un haz vertical corto y su nombre encima. Al
 pulsar uno, la cámara conserva el azimut —la transición se lee como un empujón, no como
 un salto— pero **baja hasta casi rasar el chip** (`FOCUS_PITCH`), que así se ve de canto
