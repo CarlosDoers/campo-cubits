@@ -86,6 +86,9 @@ html, body {
   display: inline-block; white-space: nowrap;
   font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase;
   color: var(--dim);
+  /* La separación vertical la calcula QubitField, igual que en las subsecciones: si el
+     CSS no la aplicara, el reparto trabajaría con una posición que no existe. */
+  transform: translateY(var(--dy, 0px));
   transition: color 0.18s;
 }
 .hub-label.hover span, .hub-label.selected span { color: var(--text); }

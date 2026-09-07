@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import type { SubItem, Territory } from '../menu';
-import { bfsOrder, heavyHex, type QubitNode, type Topology } from './HeavyHex';
+import { COLS, hasBridge, heavyHex, type QubitNode, type Topology } from './HeavyHex';
 import { Circuit } from './Circuit';
 import { easeTo, glowSprite, makeLabel, radialTexture } from './helpers';
 import { PALETTE } from '../palette';
@@ -27,29 +27,34 @@ const IDLE = 0.85; // brillo de un cúbit en reposo (las puertas ya no destellan
 const BASE_Y = 0.55; // altura a la que flota la retícula sobre el sustrato
 const BREATH = 0.045; // respiración vertical; no hay deriva horizontal, la retícula es exacta
 /**
- * Reparto de las subsecciones al abrir un territorio. Se calcula **relativo a la
- * cámara**, no en coordenadas del chip: si no, el reparto depende del ángulo desde el
- * que abras el territorio y unas veces sale bien y otras se amontonan.
- *
- * - `u` reparte de lado a lado, con una pizca de desorden.
- * - la altura alterna alta y baja: es lo que impide que las etiquetas se pisen, porque
- *   de ancho no hay sitio para ponerlas seguidas.
- * - `v` mete algo de profundidad, para que no parezca una fila recortada.
+ * El subnivel **no saca esferas nuevas**: activa cúbits que ya están en el chip. La
+ * sección vive en una fila y sus hijas en la fila de arriba, y lo que las une es el
+ * **puente** real de la retícula más los acopladores de esa fila. Al abrirla se enciende
+ * ese camino, así que el menú se dibuja con la topología de la máquina en vez de con
+ * geometría inventada encima.
  */
-const SUB_SPREAD = 2.9; // reparto lateral respecto al tótem
-const SUB_JITTER = 0.34; // desorden lateral
-const SUB_DEPTH = 0.6; // profundidad (con la cámara rasante, mueve mucho en pantalla)
-const SUB_LOW = 1.2; // alturas alternas
-const SUB_HIGH = 3.4;
-const SUB_HEIGHT_JITTER = 0.3;
-const HUB_LABEL_Y = 2.05; // altura del nombre del territorio en reposo...
-const HUB_LABEL_OPEN_Y = 5; // ...y abierto, coronando el grupo de subsecciones
-const HUB_BEAM_H = 1.8; // altura del haz en reposo
-const QUBIT_SIZE = 0.085;
-const BRIDGE_SIZE = 0.055; // los cúbits puente son de grado 2: más pequeños, como en los diagramas de IBM
-const HUB_SIZE = 0.15;
-const SUB_SIZE = 0.115;
-const COUPLER_W = 0.028; // grosor de la barra de acoplador
+const HOVER_PREVIEW = 0.8; // cuánto se enciende un subnivel con solo señalar su sección
+/**
+ * El subnivel no se enciende de golpe: la luz **viaja** desde la sección, sube por el
+ * puente y recorre la fila de arriba, un salto detrás de otro. Cada cúbit se pasa un poco
+ * de brillo al llegarle y se asienta, que es lo que hace que parezca que algo corre por
+ * el cable en vez de que alguien haya subido un regulador.
+ */
+const HOP_DELAY = 0.07; // retardo por salto de acoplador
+const LIT_RISE = 0.16; // lo que tarda un cúbit en encenderse
+const LIT_PULSE = 0.55; // sobre-brillo al llegarle la luz
+const LIT_SETTLE = 5.5; // con qué rapidez se asienta ese sobre-brillo
+const SUB_LIFT = 1.15; // cuánto se elevan las subsecciones al abrir
+const SUB_SPREAD = 2.7; // y cuánto se separan entre sí: lo justo para que quepa su etiqueta
+/** Altura de la etiqueta sobre su cúbit; una sola, porque al separarse ya caben seguidas. */
+const SUB_LABEL_Y = 0.62;
+const HUB_LABEL_Y = 1.5; // altura del nombre del territorio sobre el suyo
+const HUB_BEAM_H = 1.25; // altura del haz
+const QUBIT_SIZE = 0.17;
+const BRIDGE_SIZE = 0.11; // los cúbits puente son de grado 2: más pequeños, como en los diagramas de IBM
+const HUB_SIZE = 0.28;
+const SUB_SIZE = 0.23;
+const COUPLER_W = 0.04; // grosor de la barra de acoplador, a juego con el tamaño de los cúbits
 const BASE = new THREE.Color(PALETTE.quiet); // el cúbit en reposo no emite luz
 const COUPLER = new THREE.Color(PALETTE.line); // los acopladores son estructura
 const ACCENT = new THREE.Color(PALETTE.accent);
@@ -86,13 +91,10 @@ interface Qubit {
 
 interface SubNode {
   sub: SubItem;
+  /** Cúbit del chip que representa esta subsección. No se mueve: se enciende. */
   index: number;
   hit: THREE.Mesh;
   label: CSS2DObject;
-  /** Sitio que ocupa al elevarse, en el marco de la cámara: lateral, profundidad y altura. */
-  u: number;
-  v: number;
-  height: number;
   /** Empujón vertical en pantalla para no pisar a otra etiqueta. */
   dy: number;
 }
@@ -100,6 +102,12 @@ interface SubNode {
 interface Hub {
   item: Territory;
   index: number;
+  /** Acopladores del camino que baja de la fila de arriba: puente y tramo de fila. */
+  path: number[];
+  /** Saltos desde la sección hasta cada cúbit del camino: marca cuándo le llega la luz. */
+  hops: Array<[number, number]>;
+  /** Segundos que lleva encendiéndose, o 0 si está apagado. */
+  litT: number;
   color: THREE.Color;
   group: THREE.Group;
   ringMat: THREE.MeshBasicMaterial;
@@ -115,6 +123,7 @@ interface Hub {
 }
 
 const invisible = () => new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+const FORWARD = new THREE.Vector3(0, 0, 1); // eje largo de la barra de acoplador
 
 /**
  * El chip: los 156 cúbits en su retícula heavy-hex exacta —sin desorden, para que se
@@ -142,6 +151,22 @@ export class QubitField {
   private time = 0;
   private readonly dummy = new THREE.Object3D();
   private readonly tmpColor = new THREE.Color();
+  private readonly tmpA = new THREE.Vector3();
+  /** `fila:columna:puente` → índice de cúbit. */
+  private readonly byCell = new Map<string, number>();
+  /** `a:b` (a < b) → índice de acoplador. */
+  private readonly edgeAt = new Map<string, number>();
+  /**
+   * Encendido del subnivel, recalculado cada fotograma: el camino del territorio abierto
+   * y, al señalar una subsección, lo que se propaga desde ella por los acopladores. Se
+   * guarda por cúbit y de ahí se deduce el de cada acoplador —una barra se enciende si
+   * lo están sus dos extremos—, que es más barato y da el mismo resultado.
+   */
+  private readonly linkQubit: Float32Array;
+  private readonly linkEdge: Float32Array;
+  private readonly linkTarget: Float32Array;
+  /** Cuánta atención se lleva ahora mismo un subnivel (señalado o abierto), 0..1. */
+  private attention = 0;
 
   constructor(items: Territory[], expectedCount: number) {
     this.topology = heavyHex();
@@ -181,6 +206,17 @@ export class QubitField {
     this.hitMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.24, 6, 5), invisible(), n);
     for (let i = 0; i < n; i++) this.mesh.setColorAt(i, BASE);
 
+    for (const node of this.topology.nodes) {
+      this.byCell.set(`${node.row}:${node.col}:${node.bridge ? 1 : 0}`, node.index);
+    }
+    this.topology.edges.forEach(([a, b], e) => {
+      this.edgeAt.set(a < b ? `${a}:${b}` : `${b}:${a}`, e);
+    });
+
+    this.linkQubit = new Float32Array(n);
+    this.linkEdge = new Float32Array(this.topology.edges.length);
+    this.linkTarget = new Float32Array(n);
+
     this.halos = this.buildHalos(n);
     this.couplers = this.buildCouplers();
     this.tooltip = makeLabel('', 'qubit-tip');
@@ -206,10 +242,22 @@ export class QubitField {
     return this.selectedId;
   }
 
-  /** Posición en el sustrato del cúbit-territorio (para el vuelo de cámara). */
-  hubPosition(id: string): THREE.Vector3 | null {
-    const hub = this.hubs.find((h) => h.item.id === id);
-    return hub ? new THREE.Vector3(this.qubits[hub.index].node.x, 0, this.qubits[hub.index].node.z) : null;
+  /**
+   * Encuadre de una sección: dónde está ella y dónde queda la fila de sus hijas, para que
+   * la cámara pueda dejarla abajo en el centro con el subnivel encima.
+   */
+  hubFrame(id: string): { hub: THREE.Vector3; children: THREE.Vector3; span: number } | null {
+    const h = this.hubs.find((x) => x.item.id === id);
+    if (!h) return null;
+    const hq = this.topology.nodes[h.index];
+    const xs = h.subs.map((s) => this.topology.nodes[s.index].x);
+    const cz = h.subs.length ? this.topology.nodes[h.subs[0].index].z : hq.z;
+    return {
+      hub: new THREE.Vector3(hq.x, 0, hq.z),
+      children: new THREE.Vector3((Math.min(...xs) + Math.max(...xs)) / 2, SUB_LIFT, cz),
+      // El ancho que hay que encajar es el de **después** de separarse.
+      span: (Math.max(...xs) - Math.min(...xs)) * SUB_SPREAD,
+    };
   }
 
   hitTargets(): THREE.Object3D[] {
@@ -248,31 +296,27 @@ export class QubitField {
 
   /**
    * `focus` va de 0 (plano general) a 1 (territorio enfocado: el resto se atenúa).
-   * `camAzimuth` orienta el reparto de las subsecciones hacia la cámara.
    */
-  update(dt: number, focus: number, camAzimuth: number): void {
+  update(dt: number, focus: number): void {
     this.time += dt;
     const t = this.time;
     const rest = 1 - (1 - REST_DIM) * focus;
     const hoverIndex = this.hoverIndex();
 
     if (!this.booting) this.circuit.update(dt);
+    this.updateLinks(dt);
 
-    // Marco horizontal de la cámara: `right` va hacia la derecha de la pantalla y
-    // `away` se aleja del espectador.
-    const rx = Math.cos(camAzimuth);
-    const rz = -Math.sin(camAzimuth);
-    const ax = -Math.sin(camAzimuth);
-    const az = -Math.cos(camAzimuth);
 
     // --- estado por defecto de cada cúbit; los territorios lo sobrescriben ---
-    for (const q of this.qubits) {
+    this.qubits.forEach((q, i) => {
       q.lift = 0;
       q.sx = 0;
       q.sz = 0;
-      q.targetScale = q.size;
+      // El encendido engorda el cúbit además de teñirlo: la medida usa el mismo acento,
+      // así que hace falta un canal que no sea el color para distinguirlos.
+      q.targetScale = q.size * (1 + 0.55 * this.linkQubit[i]);
       q.targetColor.copy(BASE).multiplyScalar(IDLE * rest);
-    }
+    });
 
     // --- territorios y subsecciones: objetivos ---
     for (const hub of this.hubs) {
@@ -299,15 +343,16 @@ export class QubitField {
       hub.label.visible = boot > 0.5;
       // Abierto, el nombre sube a coronar el grupo: si se queda abajo choca con las
       // subsecciones, que ahora flotan repartidas alrededor.
-      hub.label.position.y = HUB_LABEL_Y + (HUB_LABEL_OPEN_Y - HUB_LABEL_Y) * hub.active;
+      hub.label.position.y = HUB_LABEL_Y;
 
-      // Las subsecciones se despegan del campo y quedan flotando repartidas alrededor
-      // del tótem, cada una a su altura. Sin líneas: las une el color y la cercanía.
+      // Las subsecciones son cúbits del propio chip: no aparecen de la nada, se activan
+      // donde están. Al abrir la sección se **elevan y se separan entre sí** lo justo
+      // para que su etiqueta quepa encima de cada una.
+      const cx = hub.subs.reduce((a, s) => a + this.qubits[s.index].node.x, 0) / hub.subs.length;
       for (const s of hub.subs) {
         const sq = this.qubits[s.index];
-        sq.lift = s.height * hub.active;
-        sq.sx = (q.node.x + rx * s.u + ax * s.v - sq.node.x) * hub.active;
-        sq.sz = (q.node.z + rz * s.u + az * s.v - sq.node.z) * hub.active;
+        sq.lift = SUB_LIFT * hub.active;
+        sq.sx = (sq.node.x - cx) * (SUB_SPREAD - 1) * hub.active;
         sq.targetScale = sq.size + (SUB_SIZE - sq.size) * hub.active;
         sq.targetColor.copy(BASE).multiplyScalar(IDLE * rest).lerp(TEXT, hub.active);
       }
@@ -341,8 +386,15 @@ export class QubitField {
       this.mesh.setMatrixAt(i, this.dummy.matrix);
 
       // Color: base → destello blanco de la puerta → color del bit medido.
-      this.tmpColor.copy(q.color).multiplyScalar(1 + 0.85 * gate).lerp(TEXT, gate * 0.45);
-      if (read > 0) this.tmpColor.lerp(this.circuit.bits[i] === 1 ? READ_ONE : READ_ZERO, read * 0.9 * rest);
+      const link = this.linkQubit[i];
+      this.tmpColor
+        .copy(q.color)
+        .lerp(ACCENT, Math.min(1, link) * 0.85)
+        .multiplyScalar(1 + 0.85 * gate + 0.4 * link)
+        .lerp(TEXT, gate * 0.45);
+      if (read > 0) {
+        this.tmpColor.lerp(this.circuit.bits[i] === 1 ? READ_ONE : READ_ZERO, read * 0.9 * rest * (1 - 0.75 * this.attention));
+      }
       this.mesh.setColorAt(i, this.tmpColor);
 
       this.dummy.scale.setScalar(1);
@@ -352,7 +404,7 @@ export class QubitField {
       haloPos.setXYZ(i, q.pos.x, q.pos.y, q.pos.z);
       // El halo ya no es ambiente: casi nada en reposo, y solo asoma con la lectura o al
       // pasar el ratón. Antes los 156 llevaban un aditivo permanente encima.
-      this.tmpColor.multiplyScalar((0.05 + 0.5 * gate + 0.45 * read * rest + 0.4 * q.hover) * boot);
+      this.tmpColor.multiplyScalar((0.05 + 0.5 * gate + 0.45 * read * rest * (1 - 0.75 * this.attention) + 0.4 * q.hover + 0.3 * link) * boot);
       haloCol.setXYZ(i, this.tmpColor.r, this.tmpColor.g, this.tmpColor.b);
     });
     this.mesh.instanceMatrix.needsUpdate = true;
@@ -361,10 +413,18 @@ export class QubitField {
     haloPos.needsUpdate = true;
     haloCol.needsUpdate = true;
 
-    // --- acopladores: geometría fija, solo cambia el color al ejecutarse una CZ ---
+    // --- acopladores del camino: siguen a las subsecciones cuando se elevan ---
+    // El resto tiene geometría fija; estos se recolocan porque sus extremos se mueven.
+    for (const hub of this.hubs) for (const e of hub.path) this.orientCoupler(e);
+    this.couplers.instanceMatrix.needsUpdate = true;
+
+    // --- acopladores: el color cambia con el encendido del subnivel ---
     this.topology.edges.forEach(([a, b], e) => {
       const boot = Math.min(this.bootOf(a), this.bootOf(b));
-      this.tmpColor.copy(COUPLER).multiplyScalar(rest * boot);
+      this.tmpColor
+        .copy(COUPLER)
+        .lerp(ACCENT, Math.min(1, this.linkEdge[e]) * 0.9)
+        .multiplyScalar((1 + 1.5 * this.linkEdge[e]) * rest * boot);
       this.couplers.setColorAt(e, this.tmpColor);
     });
     if (this.couplers.instanceColor) this.couplers.instanceColor.needsUpdate = true;
@@ -373,14 +433,17 @@ export class QubitField {
     for (const hub of this.hubs) {
       const isSel = hub.item.id === this.selectedId;
       const hq = this.qubits[hub.index];
-      hub.group.position.copy(hq.pos);
+      // Las etiquetas y los marcadores se anclan a la altura de reposo, **sin** la
+      // respiración vertical del cúbit. Es un movimiento de cuatro píxeles, pero hace que
+      // el reparto de etiquetas lo persiga en vez de converger, y deja solapes sueltos.
+      hub.group.position.set(hq.pos.x, BASE_Y, hq.pos.z);
       const a = hub.active;
 
       for (const s of hub.subs) {
         const q = this.qubits[s.index];
         s.hit.position.copy(q.pos);
         s.hit.visible = isSel;
-        s.label.position.set(q.pos.x, q.pos.y + 0.32, q.pos.z);
+        s.label.position.set(q.pos.x, BASE_Y + SUB_LIFT * hub.active + SUB_LABEL_Y, q.pos.z);
         s.label.visible = isSel && a > 0.6;
       }
       if (isSel) this.separateLabels(hub, dt);
@@ -396,6 +459,48 @@ export class QubitField {
   }
 
   // ---------- construcción ----------
+
+  /**
+   * Enciende el camino que cuelga el subnivel de su sección, y la propagación desde la
+   * subsección señalada: sus vecinos en el mapa de acoplamiento se encienden a dos
+   * saltos, cada vez menos. Es el "efecto de conexión" con la retícula de verdad.
+   */
+  private updateLinks(dt: number): void {
+    const target = this.linkTarget;
+    target.fill(0);
+
+    for (const hub of this.hubs) {
+      const isSel = hub.item.id === this.selectedId;
+      const isHover = this.hovered?.kind === 'item' && this.hovered.itemId === hub.item.id;
+      // Señalar una sección ya enciende su subnivel: es el adelanto de lo que hay dentro.
+      // Abrirla lo enciende del todo.
+      const level = isSel ? hub.active : isHover ? HOVER_PREVIEW : 0;
+      hub.litT = level > 0 ? hub.litT + dt : 0;
+      if (level <= 0) continue;
+
+      // Cada cúbit del camino entra cuando le llega la luz, no todos a la vez. Los
+      // acopladores se deducen de sus extremos, así que se encienden solos por detrás.
+      for (const [i, hop] of hub.hops) {
+        target[i] = Math.max(target[i], level * this.arrival(hub.litT, hop));
+      }
+    }
+
+    // La medida del circuito pinta medio chip con este mismo acento; mientras se mira un
+    // subnivel se aparta, o el adelanto se pierde entre el ruido de fondo.
+    this.attention = easeTo(this.attention, Math.max(...this.hubs.map((h) => (
+      h.item.id === this.selectedId ? h.active : this.hovered?.kind === 'item' && this.hovered.itemId === h.item.id ? HOVER_PREVIEW : 0
+    )), 0), dt, 6);
+
+    const up = Math.min(1, dt * 16);
+    const down = Math.min(1, dt * 5);
+    for (let i = 0; i < this.linkQubit.length; i++) {
+      const cur = this.linkQubit[i];
+      this.linkQubit[i] += (target[i] - cur) * (target[i] > cur ? up : down);
+    }
+    this.topology.edges.forEach(([a, b], e) => {
+      this.linkEdge[e] = Math.min(this.linkQubit[a], this.linkQubit[b]);
+    });
+  }
 
   private buildHalos(n: number): THREE.Points {
     const geo = new THREE.BufferGeometry();
@@ -448,31 +553,59 @@ export class QubitField {
     return mesh;
   }
 
+  /**
+   * Coloca las secciones y cuelga de cada una su subnivel usando la retícula real.
+   *
+   * Una sección va en un cúbit de fila que **tenga puente hacia la fila de arriba**; sus
+   * hijas son cúbits consecutivos de esa fila de arriba, centrados en la columna del
+   * puente. El camino que las une —el puente más el tramo de fila— se guarda para
+   * encenderlo al abrir: el subnivel se dibuja con los acopladores de la máquina.
+   */
   private buildHubs(items: Territory[]): void {
     const used = new Set<number>();
-    const candidates = this.topology.nodes.filter((n) => !n.bridge);
+    // Sirven las filas 1..7 (hace falta una fila encima) cuya columna tenga puente.
+    const candidates = this.topology.nodes.filter(
+      (n) => !n.bridge && n.row > 0 && hasBridge(n.row - 1, n.col),
+    );
 
-    // Un cúbit por territorio, repartidos en elipse sobre el chip.
-    const hubIndex = items.map((_, k) => {
+    items.forEach((item, k) => {
+      // Repartidas en elipse sobre el chip, como antes, pero solo entre las candidatas.
       const ang = -Math.PI / 2 - 0.25 + (k / items.length) * Math.PI * 2;
-      const tx = Math.cos(ang) * this.topology.width * 0.36;
-      const tz = Math.sin(ang) * this.topology.depth * 0.36;
-      let best = -1;
+      const tx = Math.cos(ang) * this.topology.width * 0.34;
+      const tz = Math.sin(ang) * this.topology.depth * 0.34;
+      let index = -1;
       let bestD = Infinity;
       for (const n of candidates) {
         if (used.has(n.index)) continue;
         const d = (n.x - tx) ** 2 + (n.z - tz) ** 2;
         if (d < bestD) {
           bestD = d;
-          best = n.index;
+          index = n.index;
         }
       }
-      used.add(best);
-      return best;
-    });
+      used.add(index);
 
-    items.forEach((item, k) => {
-      const index = hubIndex[k];
+      const node = this.topology.nodes[index];
+      const n = item.items.length;
+      // Ventana de `n` columnas consecutivas en la fila de arriba, centrada en la del
+      // puente y recortada a los bordes del chip.
+      const start = Math.max(0, Math.min(COLS - n, node.col - Math.floor((n - 1) / 2)));
+      const childCols = Array.from({ length: n }, (_, j) => start + j);
+
+      const path: number[] = [];
+      const bridge = this.cell(node.row - 1, node.col, true);
+      const above = this.cell(node.row - 1, node.col, false);
+      if (bridge >= 0) {
+        this.pushEdge(path, index, bridge);
+        this.pushEdge(path, bridge, above);
+      }
+      // Tramo de la fila de arriba entre la columna del puente y los extremos.
+      const lo = Math.min(node.col, childCols[0]);
+      const hi = Math.max(node.col, childCols[n - 1]);
+      for (let c = lo; c < hi; c++) {
+        this.pushEdge(path, this.cell(node.row - 1, c, false), this.cell(node.row - 1, c + 1, false));
+      }
+
       const color = ACCENT.clone();
       const q = this.qubits[index];
       q.damp = 0.3;
@@ -485,52 +618,100 @@ export class QubitField {
       group.visible = false;
 
       const ringMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7 });
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.01, 6, 48), ringMat);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.012, 6, 48), ringMat);
       ring.rotation.x = Math.PI / 2;
       const beamMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false });
-      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.05, HUB_BEAM_H, 8, 1, true), beamMat);
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.06, HUB_BEAM_H, 8, 1, true), beamMat);
       beam.position.y = HUB_BEAM_H / 2;
-      const glow = glowSprite(toRgba(ACCENT), 0.95, 0.4);
-      const hit = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 8), invisible());
+      const glow = glowSprite(toRgba(ACCENT), 1.1, 0.4);
+      const hit = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8), invisible());
       hit.userData = { kind: 'item', itemId: item.id } satisfies HitInfo;
       const label = makeLabel(item.label, 'hub-label');
       label.position.y = HUB_LABEL_Y;
       group.add(ring, beam, glow, hit, label);
       this.group.add(group);
 
-      // Subsecciones: los cúbits acoplados al del territorio (saltos por los acopladores).
-      const subs = bfsOrder(this.topology, index)
-        .filter((i) => !used.has(i))
-        .slice(0, item.items.length)
-        .map((i, j) => {
-          used.add(i);
-          const sub = item.items[j];
-          const shit = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 8), invisible());
-          shit.visible = false;
-          shit.userData = { kind: 'sub', itemId: item.id, subId: sub.id } satisfies HitInfo;
-          const slabel = makeLabel(sub.label, 'sub-label');
-          slabel.visible = false;
-          this.group.add(shit, slabel);
+      const subs = item.items.map((sub, j) => {
+        const i = this.cell(node.row - 1, childCols[j], false);
+        used.add(i);
+        const shit = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 8), invisible());
+        shit.visible = false;
+        shit.userData = { kind: 'sub', itemId: item.id, subId: sub.id } satisfies HitInfo;
+        const slabel = makeLabel(sub.label, 'sub-label');
+        slabel.visible = false;
+        this.group.add(shit, slabel);
+        return { sub, index: i, hit: shit, label: slabel, dy: 0 };
+      });
 
-          // Desorden estable: el mismo territorio se abre siempre igual, pero cada uno
-          // se reparte distinto.
-          const wob = (n: number) => (((Math.sin(n) * 43758.5453) % 1) + 1) % 1 - 0.5;
-          const total = item.items.length;
-          const lane = total > 1 ? ((j + 0.5) / total) * 2 - 1 : 0;
-          return {
-            sub,
-            index: i,
-            hit: shit,
-            label: slabel,
-            u: lane * SUB_SPREAD + wob(j * 12.9898 + k) * SUB_JITTER * 2,
-            v: wob(j * 78.233 + k * 3.7) * SUB_DEPTH * 2,
-            height: (j % 2 === 0 ? SUB_LOW : SUB_HIGH) + wob(j * 39.425 + k * 7.1) * SUB_HEIGHT_JITTER * 2,
-            dy: 0,
-          };
-        });
-
-      this.hubs.push({ item, index, color, group, ringMat, beamMat, glow, hit, label, dy: 0, scale: 1, active: 0, subs });
+      this.hubs.push({ item, index, path, hops: this.hopsAlong(index, path), litT: 0, color, group, ringMat, beamMat, glow, hit, label, dy: 0, scale: 1, active: 0, subs });
     });
+  }
+
+  /** Recoloca la barra de un acoplador entre las posiciones actuales de sus extremos. */
+  private orientCoupler(e: number): void {
+    const [a, b] = this.topology.edges[e];
+    const pa = this.qubits[a].pos;
+    const pb = this.qubits[b].pos;
+    this.tmpA.copy(pb).sub(pa);
+    const len = this.tmpA.length();
+    if (len < 1e-5) return;
+    this.dummy.position.copy(pa).lerp(pb, 0.5);
+    this.dummy.quaternion.setFromUnitVectors(FORWARD, this.tmpA.divideScalar(len));
+    this.dummy.scale.set(COUPLER_W, COUPLER_W * 0.5, len);
+    this.dummy.updateMatrix();
+    this.couplers.setMatrixAt(e, this.dummy.matrix);
+  }
+
+  /**
+   * Saltos desde la sección hasta cada cúbit del camino, recorriendo **solo** ese camino.
+   * Se calcula con un recorrido en anchura sobre el subgrafo, y no a mano, porque la
+   * ventana de hijas se recorta contra el borde del chip y entonces la columna del puente
+   * puede quedarse fuera: contando a mano saldrían mal justo en los casos de los extremos.
+   */
+  private hopsAlong(from: number, path: number[]): Array<[number, number]> {
+    const adj = new Map<number, number[]>();
+    const link = (a: number, b: number) => {
+      const l = adj.get(a);
+      if (l) l.push(b);
+      else adj.set(a, [b]);
+    };
+    for (const e of path) {
+      const [a, b] = this.topology.edges[e];
+      link(a, b);
+      link(b, a);
+    }
+    const hop = new Map<number, number>([[from, 0]]);
+    const queue = [from];
+    for (let head = 0; head < queue.length; head++) {
+      const i = queue[head];
+      for (const j of adj.get(i) ?? []) {
+        if (hop.has(j)) continue;
+        hop.set(j, hop.get(i)! + 1);
+        queue.push(j);
+      }
+    }
+    return [...hop];
+  }
+
+  /** Cuánto lleva encendido un cúbit al que la luz le llega tras `hop` saltos. */
+  private arrival(litT: number, hop: number): number {
+    const u = litT - hop * HOP_DELAY;
+    if (u <= 0) return 0;
+    const rise = THREE.MathUtils.smoothstep(u / LIT_RISE, 0, 1);
+    // Sobre-brillo que decae: el cúbit se pasa al encenderse y luego se asienta.
+    return rise * (1 + LIT_PULSE * Math.exp(-Math.max(0, u - LIT_RISE) * LIT_SETTLE));
+  }
+
+  /** Índice del cúbit en (fila, columna), o -1. */
+  private cell(row: number, col: number, bridge: boolean): number {
+    return this.byCell.get(`${row}:${col}:${bridge ? 1 : 0}`) ?? -1;
+  }
+
+  /** Añade al camino el acoplador entre dos cúbits, si existe. */
+  private pushEdge(path: number[], a: number, b: number): void {
+    if (a < 0 || b < 0) return;
+    const e = this.edgeAt.get(a < b ? `${a}:${b}` : `${b}:${a}`);
+    if (e !== undefined) path.push(e);
   }
 
   // ---------- utilidades ----------
@@ -542,7 +723,9 @@ export class QubitField {
    * garantiza que siempre se lean, cambie el contenido que cambie.
    */
   private separateLabels(hub: Hub, dt: number): void {
-    const GAP = 6;
+    // Margen holgado y ajuste rápido: los cúbits respiran en vertical, así que con poco
+    // hueco la red va por detrás del movimiento y deja solapes de uno o dos fotogramas.
+    const GAP = 10;
     const movable: Array<{ label: CSS2DObject; dy: number }> = [...hub.subs, hub];
     const boxes = movable
       .filter((s) => s.label.visible)
@@ -567,7 +750,7 @@ export class QubitField {
 
     for (const s of movable) {
       const box = boxes.find((b) => b.s === s);
-      s.dy = easeTo(s.dy, box ? box.target : 0, dt, 12);
+      s.dy = easeTo(s.dy, box ? box.target : 0, dt, 18);
       (s.label.element.firstElementChild as HTMLElement).style.setProperty('--dy', `${s.dy.toFixed(1)}px`);
     }
   }

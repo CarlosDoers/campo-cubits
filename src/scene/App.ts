@@ -26,8 +26,9 @@ const DIE_OVERHANG = 1.9;
  * que el chip se vea casi de canto y las subsecciones se lean flotando **sobre** él.
  * Debe quedar por debajo de `maxPolarAngle`, o los controles la recortarían al soltar.
  */
-const FOCUS_PITCH = 0.3;
-const UP = new THREE.Vector3(0, 1, 0);
+/** Por debajo de este ancho el panel se va abajo y no hay que correr nada. */
+const NARROW_PX = 760;
+const FOCUS_PITCH = 0.42; // inclinación al enfocar: lo justo para ver el plano de las dos filas
 const FLIGHT_SECONDS = 1.6;
 /** Retirada de cámara de la entrada: acompaña al encendido del chip. */
 const INTRO_SECONDS = 3.4;
@@ -134,8 +135,8 @@ export class App {
     const item = this.items.find((i) => i.id === id);
     if (item) {
       this.overlay.showItem(item);
-      const p = this.field.hubPosition(item.id);
-      if (p) this.flyTo(this.focusPose(p));
+      const frame = this.field.hubFrame(item.id);
+      if (frame) this.flyTo(this.focusPose(frame));
     } else {
       this.overlay.hide();
       this.flyTo(this.overview);
@@ -176,12 +177,7 @@ export class App {
       this.controls.update();
     }
 
-    // Azimut de la cámara: orienta el reparto de las subsecciones hacia el espectador.
-    const camAz = Math.atan2(
-      this.camera.position.x - this.controls.target.x,
-      this.camera.position.z - this.controls.target.z,
-    );
-    this.field.update(dt, this.focus, camAz);
+    this.field.update(dt, this.focus);
     this.ground.update(dt);
     this.ground.setFocus(this.focus);
 
@@ -302,22 +298,37 @@ export class App {
    * Enfoque de un territorio: la camara baja y se acerca, pero **sin dejar de ver el
    * chip**. El toten queda a la izquierda para dejarle sitio al panel.
    */
-  private focusPose(p: THREE.Vector3): Pose {
-    // Se conserva el azimut actual —la transicion se lee como un empujon de camara, no
-    // como un salto a otro sitio— pero la camara baja hasta `FOCUS_PITCH`.
-    const az = Math.atan2(
-      this.camera.position.x - this.controls.target.x,
-      this.camera.position.z - this.controls.target.z,
+  /**
+   * Encuadre de una sección abierta. El azimut se **fija mirando desde +Z**, no se
+   * conserva el actual: las filas del chip tienen que salir horizontales para que la fila
+   * de las hijas quede de verdad encima de la sección. Y la cámara se acerca a encajar
+   * solo esas dos filas.
+   */
+  private focusPose(f: { hub: THREE.Vector3; children: THREE.Vector3; span: number }): Pose {
+    const vFov = THREE.MathUtils.degToRad(this.camera.fov);
+    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * this.camera.aspect);
+    // Lo que hay que encajar: el ancho de las hijas con margen, y las dos filas de fondo.
+    const halfW = Math.max(f.span, 6) / 2 + 3.5;
+    const halfD = Math.abs(f.hub.z - f.children.z) / 2 + 3;
+    const near = halfD * Math.cos(FOCUS_PITCH);
+    const dist =
+      Math.max((halfD * Math.sin(FOCUS_PITCH)) / Math.tan(vFov / 2), halfW / Math.tan(hFov / 2)) + near;
+
+    // El objetivo cae entre las dos filas, algo más cerca de las hijas para que la
+    // sección quede abajo; y corrido a la derecha para dejarle sitio al panel.
+    const shift = window.innerWidth < NARROW_PX ? 0 : halfW * 0.42;
+    const target = new THREE.Vector3(
+      (f.hub.x + f.children.x) / 2 + shift,
+      0.9,
+      THREE.MathUtils.lerp(f.hub.z, f.children.z, 0.62),
     );
-    const dir = new THREE.Vector3(
-      Math.sin(az) * Math.cos(FOCUS_PITCH),
-      Math.sin(FOCUS_PITCH),
-      Math.cos(az) * Math.cos(FOCUS_PITCH),
-    );
-    const right = new THREE.Vector3().crossVectors(UP, dir).normalize();
-    const dist = this.overview.position.distanceTo(this.overview.target) * 0.62;
-    // El objetivo se corre a la derecha para que el toten quede a la izquierda del panel.
-    const target = new THREE.Vector3(p.x, 2.1, p.z).addScaledVector(right, 3.4);
-    return { position: target.clone().addScaledVector(dir, dist), target };
+    return {
+      position: new THREE.Vector3(
+        target.x,
+        target.y + dist * Math.sin(FOCUS_PITCH),
+        target.z + dist * Math.cos(FOCUS_PITCH),
+      ),
+      target,
+    };
   }
 }

@@ -23,10 +23,10 @@ export interface Topology {
 }
 
 const ROWS = 8;
-const COLS = 16;
+export const COLS = 16;
 const COL_PITCH = 1;
 const ROW_PITCH = 2;
-const BRIDGE_COLS = [
+export const BRIDGE_COLS = [
   [0, 4, 8, 12],
   [2, 6, 10, 14],
 ];
@@ -62,6 +62,15 @@ export function heavyHex(): Topology {
   }
 
   return { nodes, edges, neighbours, width: (COLS - 1) * COL_PITCH, depth: (ROWS - 1) * ROW_PITCH };
+}
+
+/**
+ * ¿Hay un cúbit puente entre la fila `r` y la `r + 1` en la columna `c`? Son las líneas
+ * que interconectan las filas, y las que usa el menú para colgar un subnivel de su
+ * sección: la sección va en una fila y sus hijas en la de arriba, unidas por el puente.
+ */
+export function hasBridge(r: number, c: number): boolean {
+  return r >= 0 && r < ROWS - 1 && BRIDGE_COLS[r % 2].includes(c);
 }
 
 /** Distancia en saltos desde `source` a cada cúbit (-1 si no es alcanzable). */
