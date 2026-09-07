@@ -4,6 +4,7 @@ import type { SubItem, Territory } from '../menu';
 import { bfsOrder, heavyHex, type QubitNode, type Topology } from './HeavyHex';
 import { Circuit } from './Circuit';
 import { easeTo, glowSprite, makeLabel, radialTexture } from './helpers';
+import { PALETTE } from '../palette';
 
 export type HitInfo =
   | { kind: 'item'; itemId: string }
@@ -22,7 +23,7 @@ const BOOT_SWEEP = 1.9; // lo que tarda el frente en cruzar el chip
 const BOOT_RISE = 0.55; // lo que tarda un cúbit en subir y encenderse
 const BOOT_DROP = 1.3; // desde dónde sube, por debajo del sustrato
 const REST_DIM = 0.24; // intensidad que conserva lo no enfocado: el chip sigue a la vista
-const IDLE = 0.42; // brillo de un cúbit en reposo: deja sitio a que la puerta destaque
+const IDLE = 0.85; // brillo de un cúbit en reposo (las puertas ya no destellan, no hace falta dejarles sitio)
 const BASE_Y = 0.55; // altura a la que flota la retícula sobre el sustrato
 const BREATH = 0.045; // respiración vertical; no hay deriva horizontal, la retícula es exacta
 /**
@@ -49,11 +50,18 @@ const BRIDGE_SIZE = 0.055; // los cúbits puente son de grado 2: más pequeños,
 const HUB_SIZE = 0.15;
 const SUB_SIZE = 0.115;
 const COUPLER_W = 0.028; // grosor de la barra de acoplador
-const BASE = new THREE.Color(0x8fe8ff);
-const COUPLER = new THREE.Color(0x22637a);
-const GATE = new THREE.Color(0xffffff);
-const READ_ONE = new THREE.Color(0xff9be0); // cúbit medido a |1⟩
-const READ_ZERO = new THREE.Color(0x3b6cff); // cúbit medido a |0⟩
+const BASE = new THREE.Color(PALETTE.quiet); // el cúbit en reposo no emite luz
+const COUPLER = new THREE.Color(PALETTE.line); // los acopladores son estructura
+const ACCENT = new THREE.Color(PALETTE.accent);
+const TEXT = new THREE.Color(PALETTE.text);
+/**
+ * La medida se codifica con **un solo color**: los cúbits que salen a |1⟩ se encienden
+ * con el acento y los que salen a |0⟩ se apagan hasta el color de línea. Antes eran rosa
+ * y azul, dos colores más para una paleta que ya tenía cinco. Con uno, el patrón medido
+ * se lee igual de bien —encendidos contra apagados— y no añade ruido.
+ */
+const READ_ONE = ACCENT;
+const READ_ZERO = new THREE.Color(PALETTE.line);
 
 interface Qubit {
   node: QubitNode;
@@ -270,20 +278,24 @@ export class QubitField {
     for (const hub of this.hubs) {
       const isSel = hub.item.id === this.selectedId;
       const isHover = this.hovered?.kind === 'item' && this.hovered.itemId === hub.item.id;
-      const k = isSel ? 1 : rest;
+      // Si los cinco tótems brillan a la vez, ninguno destaca: en reposo son un punto
+      // apagado y el brillo se lo gana el elegido.
+      const attention = isSel ? 1 : isHover ? 0.6 : 0.2;
+      const k = attention * (isSel ? 1 : rest);
       hub.scale = easeTo(hub.scale, isSel ? 1.3 : isHover ? 1.2 : 1, dt, 8);
       hub.active = easeTo(hub.active, isSel ? 1 : 0, dt, 4);
 
       const q = this.qubits[hub.index];
       q.targetScale = HUB_SIZE * hub.scale;
-      q.targetColor.copy(hub.color).multiplyScalar(k);
+      q.targetColor.copy(hub.color).multiplyScalar((0.3 + 0.7 * attention) * (isSel ? 1 : rest));
 
       const boot = this.bootOf(hub.index);
       hub.group.visible = boot > 0.01;
       hub.group.scale.setScalar(boot);
       hub.ringMat.opacity = 0.7 * k;
-      hub.beamMat.opacity = 0.22 * k * (1 - hub.active); // abierto no queda ninguna línea
-      hub.glow.material.opacity = 0.5 * k * (isSel || isHover ? 1.25 : 1);
+      hub.beamMat.opacity = 0.3 * k * (1 - hub.active); // abierto no queda ninguna línea
+      // El halo va al cuadrado: en reposo desaparece del todo en vez de quedarse tenue.
+      hub.glow.material.opacity = 0.5 * attention * attention * (isSel ? 1 : rest);
       hub.label.visible = boot > 0.5;
       // Abierto, el nombre sube a coronar el grupo: si se queda abajo choca con las
       // subsecciones, que ahora flotan repartidas alrededor.
@@ -297,7 +309,7 @@ export class QubitField {
         sq.sx = (q.node.x + rx * s.u + ax * s.v - sq.node.x) * hub.active;
         sq.sz = (q.node.z + rz * s.u + az * s.v - sq.node.z) * hub.active;
         sq.targetScale = sq.size + (SUB_SIZE - sq.size) * hub.active;
-        sq.targetColor.copy(BASE).multiplyScalar(IDLE * rest).lerp(hub.color, hub.active);
+        sq.targetColor.copy(BASE).multiplyScalar(IDLE * rest).lerp(TEXT, hub.active);
       }
     }
 
@@ -329,7 +341,7 @@ export class QubitField {
       this.mesh.setMatrixAt(i, this.dummy.matrix);
 
       // Color: base → destello blanco de la puerta → color del bit medido.
-      this.tmpColor.copy(q.color).multiplyScalar(1 + 0.85 * gate).lerp(GATE, gate * 0.5);
+      this.tmpColor.copy(q.color).multiplyScalar(1 + 0.85 * gate).lerp(TEXT, gate * 0.45);
       if (read > 0) this.tmpColor.lerp(this.circuit.bits[i] === 1 ? READ_ONE : READ_ZERO, read * 0.9 * rest);
       this.mesh.setColorAt(i, this.tmpColor);
 
@@ -338,7 +350,9 @@ export class QubitField {
       this.hitMesh.setMatrixAt(i, this.dummy.matrix);
 
       haloPos.setXYZ(i, q.pos.x, q.pos.y, q.pos.z);
-      this.tmpColor.multiplyScalar((0.22 + 0.65 * gate + 0.5 * read * rest + 0.4 * q.hover) * boot);
+      // El halo ya no es ambiente: casi nada en reposo, y solo asoma con la lectura o al
+      // pasar el ratón. Antes los 156 llevaban un aditivo permanente encima.
+      this.tmpColor.multiplyScalar((0.05 + 0.5 * gate + 0.45 * read * rest + 0.4 * q.hover) * boot);
       haloCol.setXYZ(i, this.tmpColor.r, this.tmpColor.g, this.tmpColor.b);
     });
     this.mesh.instanceMatrix.needsUpdate = true;
@@ -413,7 +427,7 @@ export class QubitField {
     const edges = this.topology.edges;
     const mesh = new THREE.InstancedMesh(
       new THREE.BoxGeometry(1, 1, 1),
-      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 1, depthWrite: false }),
       edges.length,
     );
     edges.forEach(([a, b], e) => {
@@ -459,7 +473,7 @@ export class QubitField {
 
     items.forEach((item, k) => {
       const index = hubIndex[k];
-      const color = new THREE.Color(item.color);
+      const color = ACCENT.clone();
       const q = this.qubits[index];
       q.damp = 0.3;
       q.scale = q.targetScale = HUB_SIZE;
@@ -476,10 +490,10 @@ export class QubitField {
       const beamMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false });
       const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.05, HUB_BEAM_H, 8, 1, true), beamMat);
       beam.position.y = HUB_BEAM_H / 2;
-      const glow = glowSprite(toRgba(color), 1.1, 0.5);
+      const glow = glowSprite(toRgba(ACCENT), 0.95, 0.4);
       const hit = new THREE.Mesh(new THREE.SphereGeometry(0.42, 8, 8), invisible());
       hit.userData = { kind: 'item', itemId: item.id } satisfies HitInfo;
-      const label = makeLabel(item.label, 'hub-label', item.color);
+      const label = makeLabel(item.label, 'hub-label');
       label.position.y = HUB_LABEL_Y;
       group.add(ring, beam, glow, hit, label);
       this.group.add(group);
@@ -494,7 +508,7 @@ export class QubitField {
           const shit = new THREE.Mesh(new THREE.SphereGeometry(0.32, 8, 8), invisible());
           shit.visible = false;
           shit.userData = { kind: 'sub', itemId: item.id, subId: sub.id } satisfies HitInfo;
-          const slabel = makeLabel(sub.label, 'sub-label', item.color);
+          const slabel = makeLabel(sub.label, 'sub-label');
           slabel.visible = false;
           this.group.add(shit, slabel);
 

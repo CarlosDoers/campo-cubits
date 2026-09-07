@@ -9,7 +9,7 @@ import { QUBIT_COUNT, type SubItem, type Territory } from '../menu';
 import type { Overlay } from '../ui/Overlay';
 import { QubitField, type HitInfo } from './QubitField';
 import { Ground } from './Ground';
-import { Dust } from './Dust';
+import { PALETTE } from '../palette';
 import { easeTo } from './helpers';
 
 interface Pose {
@@ -19,6 +19,8 @@ interface Pose {
 
 /** Inclinacion del plano general: cuanto se mira el chip desde arriba. */
 const OVERVIEW_PITCH = 0.8;
+/** Lo que el sustrato sobresale de la retícula, en media diagonal (ver `Ground`). */
+const DIE_OVERHANG = 1.9;
 /**
  * Inclinación al enfocar un territorio: mucho más rasante que el plano general, para
  * que el chip se vea casi de canto y las subsecciones se lean flotando **sobre** él.
@@ -59,7 +61,6 @@ export class App {
 
   private readonly field: QubitField;
   private readonly ground: Ground;
-  private readonly dust = new Dust();
 
   constructor(
     private readonly container: HTMLElement,
@@ -84,7 +85,8 @@ export class App {
 
     // --- escena / cámara ---
     this.scene.background = new THREE.Color(0x02040a);
-    this.scene.fog = new THREE.FogExp2(0x04070f, 0.02);
+    // Fondo plano y sin niebla: fuera las motas de polvo, la rejilla y el espejo.
+    this.scene.background = new THREE.Color(PALETTE.bg);
 
     this.camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 200);
 
@@ -103,7 +105,7 @@ export class App {
     // --- objetos ---
     this.field = new QubitField(items, QUBIT_COUNT);
     this.ground = new Ground(this.field.topology.width, this.field.topology.depth);
-    this.scene.add(this.field.group, this.ground.group, this.dust.points);
+    this.scene.add(this.field.group, this.ground.group);
 
     this.fitOverview();
     this.controls.target.copy(this.overview.target);
@@ -120,7 +122,7 @@ export class App {
     // --- postprocesado ---
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.85, 0.55, 0.2));
+    this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.32, 0.8, 0.62));
     this.composer.addPass(new OutputPass());
 
     this.bindEvents();
@@ -182,7 +184,6 @@ export class App {
     this.field.update(dt, this.focus, camAz);
     this.ground.update(dt);
     this.ground.setFocus(this.focus);
-    this.dust.update(dt, this.focus);
 
     const hit = this.pointerInside ? this.pick() : null;
     this.field.setHovered(hit);
@@ -284,9 +285,15 @@ export class App {
     const { width, depth } = this.field.topology;
     const vFov = THREE.MathUtils.degToRad(this.camera.fov);
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * this.camera.aspect);
-    // El chip gira despacio, asi que el caso peor no es su lado mayor sino su diagonal.
-    const half = Math.hypot(width, depth) / 2 + 1.8;
-    const dist = Math.max(half / Math.tan(hFov / 2), (half * Math.sin(OVERVIEW_PITCH)) / Math.tan(vFov / 2)) + 2;
+    // El chip gira despacio, así que el caso peor no es su lado mayor sino su diagonal,
+    // más lo que el sustrato sobresale de la retícula.
+    const half = Math.hypot(width, depth) / 2 + DIE_OVERHANG;
+    // Y hay que contar con la perspectiva: el borde cercano está `half·cos(pitch)` más
+    // cerca de la cámara que el centro, así que se proyecta bastante más grande. Con la
+    // fórmula ortográfica de antes el chip se salía por la esquina de abajo.
+    const near = half * Math.cos(OVERVIEW_PITCH);
+    const dist =
+      Math.max((half * Math.sin(OVERVIEW_PITCH)) / Math.tan(vFov / 2), half / Math.tan(hFov / 2)) + near;
     this.overview.target.set(0, 0.4, 0);
     this.overview.position.set(0, dist * Math.sin(OVERVIEW_PITCH), dist * Math.cos(OVERVIEW_PITCH));
   }

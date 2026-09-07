@@ -1,10 +1,9 @@
 {
-  "$comment": "Contenido del menú. Cada territorio es un cúbit destacado sobre la esfera; sus items se despegan como subsecciones al seleccionarlo. Industria, Laboratorio y Ecosistema llevan items provisionales a la espera del contenido del cliente.",
+  "$comment": "Contenido del menú. Cada territorio es un cúbit destacado; sus items se despegan como subsecciones al seleccionarlo. No hay color por territorio: el site usa una sola paleta (ver src/palette.ts) y las secciones se distinguen por su sitio y su nombre. Industria, Laboratorio y Ecosistema llevan items provisionales a la espera del contenido del cliente.",
   "territorios": [
     {
       "id": "industria",
       "label": "Industria",
-      "color": "#ffc857",
       "description": "Lleva la computación cuántica a los retos reales de las empresas.",
       "items": [
         { "id": "casos-de-uso", "label": "Casos de uso", "description": "Optimización, materiales, finanzas y logística." },
@@ -15,7 +14,6 @@
     {
       "id": "laboratorio",
       "label": "Laboratorio",
-      "color": "#ff4fd8",
       "description": "IBM Quantum System Two con procesador Heron de 156 cúbits, en Donostia.",
       "items": [
         { "id": "infraestructura", "label": "Infraestructura", "description": "El sistema, el procesador y su entorno criogénico." },
@@ -26,7 +24,6 @@
     {
       "id": "grado",
       "label": "Grado",
-      "color": "#4fe3ff",
       "description": "Formación académica de excelencia con enfoque cuántico, innovación y visión global.",
       "items": [
         { "id": "que-aprenderas", "label": "Qué aprenderás", "description": "Fundamentos cuánticos, herramientas avanzadas y aplicaciones reales." },
@@ -37,7 +34,6 @@
     {
       "id": "ciencia",
       "label": "Ciencia",
-      "color": "#9b7bff",
       "description": "Impulsa la investigación cuántica aplicada para resolver desafíos reales y futuros.",
       "items": [
         { "id": "investigacion-aplicada", "label": "Investigación aplicada", "description": "Desarrollo de soluciones cuánticas con impacto real." },
@@ -49,7 +45,6 @@
     {
       "id": "ecosistema",
       "label": "Ecosistema",
-      "color": "#7dff8f",
       "description": "La comunidad cuántica de Euskadi: instituciones, empresas y talento.",
       "items": [
         { "id": "instituciones", "label": "Instituciones", "description": "Centros, universidades y administraciones." },

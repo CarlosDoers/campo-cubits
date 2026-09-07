@@ -20,8 +20,6 @@ export interface SubItem {
 export interface Territory {
   id: string;
   label: string;
-  /** Color del cúbit, de sus subsecciones y del acento en el panel. */
-  color: string;
   description: string;
   items: SubItem[];
 }

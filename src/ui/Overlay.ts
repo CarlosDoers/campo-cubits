@@ -27,7 +27,6 @@ export class Overlay {
   }
 
   showItem(item: Territory): void {
-    this.panel.style.setProperty('--accent', item.color);
     this.title.textContent = item.label;
     this.desc.textContent = item.description;
 
@@ -37,9 +36,7 @@ export class Overlay {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.innerHTML =
-          `<span class="dot"></span><span>${sub.label}` +
-          (sub.description ? `<small>${sub.description}</small>` : '') +
-          `</span><span class="arrow">→</span>`;
+          `<span>${sub.label}</span>` + (sub.description ? `<small>${sub.description}</small>` : '');
         btn.addEventListener('click', () => this.onSubClick(item, sub));
         li.appendChild(btn);
         return li;

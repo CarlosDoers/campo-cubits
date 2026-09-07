@@ -1,11 +1,25 @@
+/*
+ * Un acento y neutros. Los valores tienen que coincidir con `src/palette.ts`.
+ *
+ * Reglas de la casa, para no volver a lo de antes:
+ *  - Mayúsculas espaciadas SOLO en dos sitios: el logotipo y el antetítulo del panel.
+ *    Cuando todo es un micro-label espaciado no hay jerarquía tipográfica, solo textura.
+ *  - Nada de `backdrop-filter`, ni radios grandes, ni sombras de 80px, ni degradados de
+ *    borde. La jerarquía la dan el tamaño, el peso y una línea de un píxel.
+ *  - El acento se reserva para lo seleccionado. Si aparece en todo, no marca nada.
+ */
 :root {
-  --bg: #02040a;
-  --fg: #e6f1ff;
-  --muted: rgba(230, 241, 255, 0.5);
-  --accent: #6ee7ff;
-  --font: "Inter", "SF Pro Display", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --serif: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --bg: #05070b;
+  --line: #2a3440;
+  --quiet: #4a5a6b;
+  --dim: #8b97a6;
+  --text: #e8edf3;
+  --accent: #4fd0ee;
+
+  --font: "Inter", "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --gutter: 40px;
 }
 
 * { box-sizing: border-box; }
@@ -14,8 +28,10 @@ html, body {
   margin: 0;
   height: 100%;
   background: var(--bg);
-  color: var(--fg);
+  color: var(--text);
   font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }
@@ -25,177 +41,152 @@ html, body {
 #app canvas:active { cursor: grabbing; }
 #app.is-hover canvas { cursor: pointer; }
 
-/* Capa de interfaz HTML */
 #ui { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
 
+/* ---------- Cabecera ---------- */
 .brand {
-  position: absolute; top: 28px; left: 32px;
-  display: flex; flex-direction: column; gap: 6px;
+  position: absolute; top: var(--gutter); left: var(--gutter);
+  display: flex; flex-direction: column; gap: 4px;
 }
-.brand-title { font-size: 20px; font-weight: 700; letter-spacing: 0.45em; }
-.brand-sub { font-size: 10px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--muted); }
+/* Uno de los dos únicos sitios con mayúsculas espaciadas: es un logotipo. */
+.brand-title { font-size: 14px; font-weight: 600; letter-spacing: 0.2em; }
+.brand-sub { font-size: 12px; color: var(--dim); }
 
 .hint {
-  position: absolute; left: 32px; bottom: 28px;
-  display: flex; gap: 10px; flex-wrap: wrap;
-  font-size: 10px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--muted);
+  position: absolute; left: var(--gutter); bottom: var(--gutter);
+  display: flex; gap: 8px; flex-wrap: wrap;
+  font-size: 12px; color: var(--dim);
 }
-.hint .sep { opacity: 0.4; }
+.hint .sep { color: var(--line); }
 
-/* ---------- Ficha del sistema (156 cúbits) ---------- */
+/* ---------- Ficha del sistema ---------- */
 .hud {
-  position: absolute; right: 32px; bottom: 28px;
-  display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+  position: absolute; right: var(--gutter); bottom: var(--gutter);
+  display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
   text-align: right;
 }
-.hud-count { display: flex; align-items: baseline; gap: 10px; }
+.hud-count { display: flex; align-items: baseline; gap: 8px; }
 .hud-count #qubit-count {
-  font-family: var(--mono); font-size: 40px; font-weight: 300; line-height: 1;
-  letter-spacing: 0.06em; color: #fff;
-  text-shadow: 0 0 18px rgba(102, 234, 255, 0.55);
-  font-variant-numeric: tabular-nums;
+  font-family: var(--mono); font-size: 30px; font-weight: 400; line-height: 1;
+  color: var(--text); font-variant-numeric: tabular-nums;
 }
-.hud-unit { font-size: 11px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--accent); }
-.hud-lines { display: flex; flex-direction: column; gap: 3px; }
-.hud-lines span { font-size: 9.5px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted); }
-.hud-lines span:first-child { color: rgba(230, 241, 255, 0.8); }
+.hud-unit { font-size: 12px; color: var(--dim); }
+.hud-lines { display: flex; flex-direction: column; gap: 2px; }
+.hud-lines span { font-size: 11.5px; color: var(--dim); }
+.hud-lines span:first-child { color: var(--text); }
 
-/* ---------- Etiquetas 3D (CSS2DRenderer) ---------- */
+/* ---------- Etiquetas ancladas a la escena ---------- */
 .ket-label {
-  font-family: var(--serif); font-size: 13px;
-  color: rgba(230, 241, 255, 0.8);
-  text-shadow: 0 0 8px rgba(120, 230, 255, 0.7);
+  font-family: var(--mono); font-size: 12px; color: var(--dim);
 }
 
+/* Los nombres de sección van en versalitas espaciadas porque compiten con la escena y
+   necesitan leerse pequeños; las subsecciones, en caja normal. */
 .hub-label span {
   display: inline-block; white-space: nowrap;
-  font-size: 11px; font-weight: 600; letter-spacing: 0.26em; text-transform: uppercase;
-  color: var(--c); opacity: 0.8;
-  text-shadow: 0 0 10px var(--c), 0 0 2px #000;
-  transition: transform 0.25s ease, opacity 0.25s ease;
+  font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--dim);
+  transition: color 0.18s;
 }
-.hub-label.hover span, .hub-label.selected span { opacity: 1; transform: scale(1.18); }
-.hub-label.dim span { opacity: 0.22; }
+.hub-label.hover span, .hub-label.selected span { color: var(--text); }
+.hub-label.selected span { color: var(--accent); }
+.hub-label.dim span { color: var(--line); }
 
 .sub-label span {
   display: inline-block; white-space: nowrap;
-  padding: 5px 10px; border-radius: 999px;
-  font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase;
-  color: rgba(230, 241, 255, 0.92);
-  background: rgba(4, 8, 18, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 0 14px rgba(0, 0, 0, 0.5);
-  text-shadow: 0 0 8px var(--c);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  transition: transform 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  padding: 4px 9px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  /* Alineación hacia fuera de la esfera y separación vertical; las calcula QubitLattice. */
+  transform: translate(var(--dx, 0), var(--dy, 0px));
+  transition: border-color 0.18s, color 0.18s;
 }
-.sub-label.hover span { color: #fff; border-color: var(--c); transform: scale(1.08); }
+.sub-label.hover span { border-color: var(--accent); }
 
 .qubit-tip span {
-  font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em;
-  color: rgba(143, 240, 255, 0.9);
-  text-shadow: 0 0 8px rgba(143, 240, 255, 0.8), 0 0 2px #000;
-  white-space: nowrap;
+  font-family: var(--mono); font-size: 11px; color: var(--dim); white-space: nowrap;
 }
 
-/* ---------- Panel lateral del submenú ---------- */
+/* Qué está haciendo el chip ahora mismo. */
+.hud-circuit {
+  font-family: var(--mono); font-size: 11.5px; color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Panel de sección ---------- */
+/* A ras del borde derecho y con esquinas vivas: un bloque de la maqueta, no una tarjeta
+   flotante de cristal. */
 .panel {
-  position: absolute; right: 32px; top: 50%;
-  width: min(340px, calc(100vw - 64px));
-  padding: 30px 28px 22px;
-  border-radius: 20px;
-  background: rgba(6, 10, 20, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), inset 0 0 80px rgba(255, 255, 255, 0.02);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  transform: translate(28px, -50%);
+  position: absolute; right: 0; top: 50%;
+  width: min(380px, 100vw);
+  padding: 32px 40px 28px 32px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-right: 0;
+  transform: translate(16px, -50%);
   opacity: 0; visibility: hidden; pointer-events: none;
-  transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear 0.35s;
+  transition: opacity 0.28s ease, transform 0.36s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s linear 0.28s;
 }
 .panel.open {
   opacity: 1; visibility: visible; pointer-events: auto;
   transform: translate(0, -50%);
   transition-delay: 0s;
 }
-.panel::before {
-  content: ""; position: absolute; left: 28px; right: 28px; top: 0; height: 1px;
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-}
 .panel-close {
-  position: absolute; top: 14px; right: 16px;
-  width: 30px; height: 30px; border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.12); background: transparent;
-  color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer;
-  transition: color 0.2s, border-color 0.2s;
+  position: absolute; top: 20px; right: 20px;
+  width: 24px; height: 24px; padding: 0;
+  border: 0; background: transparent;
+  color: var(--dim); font-size: 20px; line-height: 1; cursor: pointer;
+  transition: color 0.18s;
 }
-.panel-close:hover { color: #fff; border-color: rgba(255, 255, 255, 0.4); }
-.panel-kicker { font-size: 10px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--accent); }
-.panel-title { margin: 8px 0 6px; font-size: 26px; font-weight: 700; letter-spacing: 0.02em; }
-.panel-desc { margin: 0 0 18px; font-size: 13px; line-height: 1.55; color: var(--muted); }
-.panel-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.panel-close:hover { color: var(--text); }
+
+/* El otro sitio con mayúsculas espaciadas: es un antetítulo, no texto corrido. */
+.panel-kicker { font-size: 10.5px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim); }
+.panel-title {
+  margin: 6px 0 10px;
+  font-size: 26px; font-weight: 500; line-height: 1.15; letter-spacing: -0.015em;
+}
+.panel-desc { margin: 0 0 24px; font-size: 14px; line-height: 1.55; color: var(--dim); }
+
+.panel-list { list-style: none; margin: 0; padding: 0; }
+.panel-list li + li { border-top: 1px solid var(--line); }
 .panel-list button {
   width: 100%; text-align: left;
-  display: flex; align-items: center; gap: 12px;
-  padding: 11px 14px; border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--fg); font: inherit; font-size: 13px; letter-spacing: 0.04em;
-  cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+  display: block; padding: 13px 0;
+  border: 0; background: transparent;
+  color: var(--text); font: inherit; cursor: pointer;
+  transition: color 0.18s;
 }
-.panel-list button:hover { background: rgba(255, 255, 255, 0.07); border-color: var(--accent); transform: translateX(3px); }
-.panel-list button .dot {
-  width: 8px; height: 8px; border-radius: 50%; flex: none;
-  background: var(--accent); box-shadow: 0 0 10px var(--accent);
-}
-.panel-list button .arrow { margin-left: auto; opacity: 0.35; }
-.panel-list button small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
-.panel-foot { margin-top: 18px; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); opacity: 0.6; }
+.panel-list button > span { display: block; font-size: 14px; font-weight: 500; }
+.panel-list button small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--dim); }
+.panel-list button:hover, .panel-list button:focus-visible { color: var(--accent); outline: none; }
+.panel-list button:hover small, .panel-list button:focus-visible small { color: var(--text); }
 
-/* ---------- Toast ---------- */
+.panel-foot { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 12px; color: var(--dim); }
+
+/* ---------- Aviso de navegación ---------- */
 .toast {
-  position: absolute; left: 50%; bottom: 34px;
-  transform: translate(-50%, 12px);
-  padding: 10px 18px; border-radius: 999px;
-  background: rgba(6, 10, 20, 0.7); border: 1px solid rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(12px);
-  font-size: 12px; letter-spacing: 0.08em;
-  opacity: 0; transition: opacity 0.3s ease, transform 0.3s ease;
+  position: absolute; left: 50%; bottom: 28px;
+  transform: translate(-50%, 8px);
+  padding: 9px 16px;
+  background: var(--bg); border: 1px solid var(--line);
+  font-size: 13px;
+  opacity: 0; transition: opacity 0.24s ease, transform 0.24s ease;
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
-.toast b { color: var(--accent); font-weight: 600; }
+.toast b { color: var(--accent); font-weight: 500; }
 
-@media (max-width: 640px) {
-  .brand { top: 20px; left: 20px; }
-  .hint { left: 20px; bottom: 20px; }
-  .hud { right: 20px; bottom: 56px; }
+@media (max-width: 760px) {
+  :root { --gutter: 20px; }
   .hud-lines { display: none; }
-  .panel { right: 16px; left: 16px; top: auto; bottom: 16px; width: auto; transform: translate(0, 28px); }
+  .panel {
+    right: 0; left: 0; top: auto; bottom: 0; width: auto;
+    border-right: 0; border-left: 0; border-bottom: 0;
+    transform: translate(0, 16px);
+  }
   .panel.open { transform: translate(0, 0); }
   .panel.open ~ .hud { display: none; }
 }
-
-/* ---------- Propuesta 2: campo de cúbits ---------- */
-.hub-label span { font-size: 12px; letter-spacing: 0.3em; }
-.sub-label span { font-size: 11px; }
-.panel-foot { letter-spacing: 0.18em; }
-
-/* Empujón vertical de las etiquetas de subsección cuando se pisan (lo calcula QubitField) */
-.sub-label span, .hub-label span { transform: translateY(var(--dy, 0px)); }
-.sub-label.hover span { transform: translateY(var(--dy, 0px)) scale(1.08); }
-.hub-label.hover span, .hub-label.selected span { transform: translateY(var(--dy, 0px)) scale(1.18); }
-
-/* Estado del circuito en marcha */
-.hud-circuit {
-  display: flex; align-items: center; gap: 8px;
-  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.12em;
-  color: rgba(230, 241, 255, 0.75);
-}
-.hud-dot {
-  width: 6px; height: 6px; border-radius: 50%; flex: none;
-  background: var(--accent); box-shadow: 0 0 8px var(--accent);
-  animation: pulse 1.6s ease-in-out infinite;
-}
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
