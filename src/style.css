@@ -89,10 +89,11 @@ html, body {
   /* La separación vertical la calcula QubitField, igual que en las subsecciones: si el
      CSS no la aplicara, el reparto trabajaría con una posición que no existe. */
   transform: translateY(var(--dy, 0px));
-  transition: color 0.18s;
+  transition: color 0.18s, opacity 0.32s ease;
 }
-.hub-label.hover span, .hub-label.selected span { color: var(--text); }
-.hub-label.selected span { color: var(--accent); }
+.hub-label.hover span { color: var(--text); }
+/* Abierta, la etiqueta pequeña se apaga: el nombre pasa a leerse grande a la izquierda. */
+.hub-label.selected span { opacity: 0; }
 .hub-label.dim span { color: var(--line); }
 
 .sub-label span {
@@ -117,6 +118,29 @@ html, body {
   font-family: var(--mono); font-size: 11.5px; color: var(--dim);
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------- Nombre del territorio seleccionado ---------- */
+/* El único titular de la página. La escena se queda con las etiquetas pequeñas y el
+   panel con la lista; el nombre de lo que has abierto se dice una vez y grande, en el
+   margen izquierdo que ya usan el logotipo y las ayudas. Sin mayúsculas ni espaciado:
+   a este cuerpo la jerarquía la da el tamaño. */
+.territory-name {
+  position: absolute; left: var(--gutter); top: 50%;
+  max-width: min(30vw, 420px);
+  transform: translateY(-50%);
+  opacity: 0;
+  transition: opacity 0.32s ease;
+}
+.territory-name span {
+  display: block;
+  font-size: clamp(38px, 4.6vw, 76px);
+  font-weight: 300; line-height: 1.02; letter-spacing: -0.03em;
+  color: var(--text);
+  transform: translateX(-12px);
+  transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.territory-name.show { opacity: 1; }
+.territory-name.show span { transform: translateX(0); }
 
 /* ---------- Panel de sección ---------- */
 /* A ras del borde derecho y con esquinas vivas: un bloque de la maqueta, no una tarjeta
@@ -192,4 +216,7 @@ html, body {
   }
   .panel.open { transform: translate(0, 0); }
   .panel.open ~ .hud { display: none; }
+  /* Sobre una escena que ocupa todo el ancho, un titular a 38px se come el campo; y el
+     panel de abajo ya lleva el nombre en su cabecera. */
+  .territory-name { display: none; }
 }

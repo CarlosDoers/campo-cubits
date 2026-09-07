@@ -44,23 +44,58 @@ El arranque va en tres tiempos, porque es lo primero que ve cualquiera:
 La cámara acompaña: empieza cerca y casi a ras del sustrato y se retira al plano general
 a lo largo de los 3,4 s, así que el chip se revela a la vez que se enciende.
 
-Los **territorios** son cúbits-tótem con un haz vertical corto y su nombre encima. Al
-pulsar uno, la cámara conserva el azimut —la transición se lee como un empujón, no como
-un salto— pero **baja hasta casi rasar el chip** (`FOCUS_PITCH`), que así se ve de canto
-y sirve de suelo. Sus subsecciones se
-despegan del campo y quedan **flotando repartidas alrededor del tótem**, cada una a su
-altura. Sin líneas de ningún tipo: al abrirse, hasta el haz del tótem se desvanece, y lo
-que agrupa las subsecciones es el color y la cercanía. El nombre del territorio sube a
-coronar el grupo. El resto se atenúa pero **el circuito sigue corriendo**: el chip no
-deja de trabajar mientras navegas.
+Los **territorios** son cúbits-tótem con un haz vertical corto y su nombre encima.
 
-El reparto se calcula **relativo a la cámara**, no en coordenadas del chip: si no,
-depende del ángulo desde el que abras el territorio y unas veces sale repartido y otras
-se amontona. Las alturas alternan alta y baja, que es lo que impide que las etiquetas se
-pisen —de ancho no hay sitio para ponerlas seguidas—. Y como eso depende del texto,
-`separateLabels` hace de red: si dos llegan a tocarse, empuja la de arriba lo justo. El
-desplazamiento es pequeño y suavizado, así que no se nota, pero garantiza que se lean
-aunque cambie el contenido del menú.
+Al pulsar uno **no aparece nada nuevo**: el subnivel son cúbits que ya estaban en el
+campo. Cada territorio vive en una fila que tiene puente hacia la de arriba, y sus
+subsecciones son las columnas contiguas de esa fila superior. Se encienden en cadena
+—tótem, puente, fila— recorriendo los acopladores reales, así que el submenú es la
+propia topología del chip haciendo de menú. Al abrirse, el haz del tótem se desvanece:
+no queda ni una línea que no sea un acoplador de verdad.
+
+Las subsecciones **no se elevan ni se separan**: se quedan exactamente donde están en la
+retícula. Antes se despegaban del campo y se abrían en abanico para que cupieran sus
+etiquetas, y era justo lo que delataba el truco —el chip dejaba de ser un chip—. Ahora
+de que quepan se encarga la cámara.
+
+El encuadre de la sección abierta (`focusPose`) se calcula así:
+
+- **Azimut fijo mirando desde +Z**, no el actual. Las filas tienen que salir
+  horizontales, o la fila de las hijas no queda encima de la sección.
+- **Picado** (`FOCUS_PITCH`), al revés que el plano general. Rasante las dos filas se
+  aplastaban una contra otra y el subnivel no se leía como una fila encima de su sección,
+  sino como un montón. Desde arriba la separación vertical entre filas sale casi el doble
+  que el paso entre columnas y la retícula se lee como lo que es.
+- **Distancia por legibilidad**: se acerca hasta que una columna del chip ocupa
+  `LABEL_ROOM` píxeles, que es el sitio que necesita una etiqueta. Como suelo queda el
+  encaje geométrico del grupo, por si el encuadre es tan estrecho que acercarse dejaría
+  fuera a las hijas de los extremos. El vuelo se nota mucho más que antes, y esa es la
+  otra mitad de la gracia: compensa que las esferas ya no se muevan.
+- **La sección cae abajo en el centro** del hueco que deja el panel. El desplazamiento
+  se calcula a la profundidad del tótem, no a la del objetivo: va por delante, se
+  proyecta más grande y la misma distancia en el mundo lo corre bastante más en
+  pantalla. Con un valor fijo se iba medio encuadre a la izquierda.
+
+Abierta, la etiqueta pequeña de la sección **se apaga** y su nombre pasa a leerse a
+cuerpo de titular en el margen izquierdo, alineado con el logotipo y las ayudas. Es el
+único titular de la página: la escena se queda con las etiquetas pequeñas de las hijas y
+el panel con la lista, así que el nombre se dice una vez y grande. Antes se probó a
+colocarlo encima de su esfera —no cabe, el hueco entre las dos filas se lo reparten el
+cúbit puente y su acoplador— y luego delante de ella; las dos veces acababa dicho tres
+veces en la misma pantalla.
+
+`separateLabels` queda de red para las ventanas bajas y anchas, donde la cámara tiene que
+retroceder para que quepan las dos filas, las columnas se estrechan y las etiquetas se
+rozan: entonces las escalona. Las recorre **en su orden de la retícula**, de izquierda a
+derecha, y cada una pasa por encima de las anteriores con las que se cruce. El orden fijo
+es lo importante: antes se ordenaban por su altura medida, que parecía lo natural, pero
+están todas en la misma fila y cualquier temblor de un píxel les cambiaba el orden; la
+escalera se rehacía al revés cada fotograma y se quedaban oscilando unas encima de otras
+sin llegar a separarse nunca.
+
+El resto del campo se atenúa pero **el circuito sigue corriendo**: el chip no deja de
+trabajar mientras navegas. Y los demás tótems que queden en cuadro siguen siendo
+pulsables, así que se salta de una sección a otra sin volver al plano general.
 
 ## Paleta
 
@@ -101,7 +136,7 @@ npm run preview  # sirve dist/
 | Arrastrar | Orbita la cámara |
 | Rueda / pellizco | Zoom |
 | Hover sobre un cúbit | Muestra su índice (Q·042) y, si ya se ha medido, su valor |
-| Clic en un territorio | La cámara se acerca, sus subsecciones se elevan sobre el tótem y se abre el panel. El resto se atenúa |
+| Clic en un territorio | La cámara vuela hasta encajar el tótem abajo en el centro y su fila de hijas encima; el subnivel se enciende sobre la propia retícula y se abre el panel. El resto se atenúa |
 | Clic en una subsección o botón del panel | Dispara `app.onNavigate(item, sub)` |
 | Esc / clic en vacío / × | Cierra y devuelve la cámara al plano general |
 

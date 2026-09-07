@@ -44,12 +44,31 @@ const HOP_DELAY = 0.07; // retardo por salto de acoplador
 const LIT_RISE = 0.16; // lo que tarda un cúbit en encenderse
 const LIT_PULSE = 0.55; // sobre-brillo al llegarle la luz
 const LIT_SETTLE = 5.5; // con qué rapidez se asienta ese sobre-brillo
-const SUB_LIFT = 1.15; // cuánto se elevan las subsecciones al abrir
-const SUB_SPREAD = 2.7; // y cuánto se separan entre sí: lo justo para que quepa su etiqueta
-/** Altura de la etiqueta sobre su cúbit; una sola, porque al separarse ya caben seguidas. */
-const SUB_LABEL_Y = 0.62;
-const HUB_LABEL_Y = 1.5; // altura del nombre del territorio sobre el suyo
-const HUB_BEAM_H = 1.25; // altura del haz
+/**
+ * Al abrir, las subsecciones **no se mueven en absoluto**: ni se elevan ni se separan. Se
+ * quedan exactamente donde están en la retícula y solo se encienden. De que quepan sus
+ * etiquetas se encarga la cámara, acercándose (ver `focusPose` en `App`).
+ */
+/**
+ * Altura de la etiqueta sobre su cúbit. Va corta a propósito: con la cámara metida en el
+ * plano, una etiqueta a media unidad de su esfera se despega tanto que deja de leerse
+ * como su nombre y parece un rótulo suelto.
+ */
+const SUB_LABEL_Y = 0.42;
+/**
+ * El nombre del territorio va justo encima de su cúbit, igual que los de las hijas. Antes
+ * flotaba más alto, pero ahora que las hijas no se elevan esa altura alcanzaba su banda de
+ * etiquetas y chocaba con una de ellas.
+ */
+const HUB_LABEL_Y = 0.75;
+/*
+ * Abierta, esta etiqueta **se apaga** (lo hace el CSS, con `.hub-label.selected`): el
+ * nombre pasa a leerse a cuerpo de titular en el margen izquierdo. Antes se intentó
+ * colocarla encima —no cabe, el hueco entre las dos filas se lo reparten el cúbit puente
+ * y su acoplador— y luego delante de la esfera; las dos veces el mismo nombre acababa
+ * dicho tres veces en la misma pantalla.
+ */
+const HUB_BEAM_H = 0.6; // altura del haz, a juego
 const QUBIT_SIZE = 0.17;
 const BRIDGE_SIZE = 0.11; // los cúbits puente son de grado 2: más pequeños, como en los diagramas de IBM
 const HUB_SIZE = 0.28;
@@ -254,9 +273,8 @@ export class QubitField {
     const cz = h.subs.length ? this.topology.nodes[h.subs[0].index].z : hq.z;
     return {
       hub: new THREE.Vector3(hq.x, 0, hq.z),
-      children: new THREE.Vector3((Math.min(...xs) + Math.max(...xs)) / 2, SUB_LIFT, cz),
-      // El ancho que hay que encajar es el de **después** de separarse.
-      span: (Math.max(...xs) - Math.min(...xs)) * SUB_SPREAD,
+      children: new THREE.Vector3((Math.min(...xs) + Math.max(...xs)) / 2, 0, cz),
+      span: Math.max(...xs) - Math.min(...xs),
     };
   }
 
@@ -326,7 +344,10 @@ export class QubitField {
       // apagado y el brillo se lo gana el elegido.
       const attention = isSel ? 1 : isHover ? 0.6 : 0.2;
       const k = attention * (isSel ? 1 : rest);
-      hub.scale = easeTo(hub.scale, isSel ? 1.3 : isHover ? 1.2 : 1, dt, 8);
+      // Abierta, la sección crece poco: ya está en primer plano y la perspectiva la
+      // agranda un 45 % de más sobre la fila de las hijas. Con el 1,3 de antes salía una
+      // bola blanca del tamaño de un tercio del encuadre.
+      hub.scale = easeTo(hub.scale, isSel ? 1.15 : isHover ? 1.2 : 1, dt, 8);
       hub.active = easeTo(hub.active, isSel ? 1 : 0, dt, 4);
 
       const q = this.qubits[hub.index];
@@ -341,18 +362,13 @@ export class QubitField {
       // El halo va al cuadrado: en reposo desaparece del todo en vez de quedarse tenue.
       hub.glow.material.opacity = 0.5 * attention * attention * (isSel ? 1 : rest);
       hub.label.visible = boot > 0.5;
-      // Abierto, el nombre sube a coronar el grupo: si se queda abajo choca con las
-      // subsecciones, que ahora flotan repartidas alrededor.
       hub.label.position.y = HUB_LABEL_Y;
 
       // Las subsecciones son cúbits del propio chip: no aparecen de la nada, se activan
       // donde están. Al abrir la sección se **elevan y se separan entre sí** lo justo
       // para que su etiqueta quepa encima de cada una.
-      const cx = hub.subs.reduce((a, s) => a + this.qubits[s.index].node.x, 0) / hub.subs.length;
       for (const s of hub.subs) {
         const sq = this.qubits[s.index];
-        sq.lift = SUB_LIFT * hub.active;
-        sq.sx = (sq.node.x - cx) * (SUB_SPREAD - 1) * hub.active;
         sq.targetScale = sq.size + (SUB_SIZE - sq.size) * hub.active;
         sq.targetColor.copy(BASE).multiplyScalar(IDLE * rest).lerp(TEXT, hub.active);
       }
@@ -390,7 +406,10 @@ export class QubitField {
       this.tmpColor
         .copy(q.color)
         .lerp(ACCENT, Math.min(1, link) * 0.85)
-        .multiplyScalar(1 + 0.85 * gate + 0.4 * link)
+        // El refuerzo del encendido se quedó en la mitad: de lejos daba igual, pero con
+        // la cámara encima un cúbit al 1,4 se sale de rango, se come su propio contorno y
+        // el bloom lo convierte en una mancha.
+        .multiplyScalar(1 + 0.85 * gate + 0.22 * link)
         .lerp(TEXT, gate * 0.45);
       if (read > 0) {
         this.tmpColor.lerp(this.circuit.bits[i] === 1 ? READ_ONE : READ_ZERO, read * 0.9 * rest * (1 - 0.75 * this.attention));
@@ -443,7 +462,7 @@ export class QubitField {
         const q = this.qubits[s.index];
         s.hit.position.copy(q.pos);
         s.hit.visible = isSel;
-        s.label.position.set(q.pos.x, BASE_Y + SUB_LIFT * hub.active + SUB_LABEL_Y, q.pos.z);
+        s.label.position.set(q.pos.x, BASE_Y + SUB_LABEL_Y, q.pos.z);
         s.label.visible = isSel && a > 0.6;
       }
       if (isSel) this.separateLabels(hub, dt);
@@ -621,7 +640,7 @@ export class QubitField {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.012, 6, 48), ringMat);
       ring.rotation.x = Math.PI / 2;
       const beamMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false });
-      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.06, HUB_BEAM_H, 8, 1, true), beamMat);
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.07, HUB_BEAM_H, 8, 1, true), beamMat);
       beam.position.y = HUB_BEAM_H / 2;
       const glow = glowSprite(toRgba(ACCENT), 1.1, 0.4);
       const hit = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8), invisible());
@@ -717,42 +736,47 @@ export class QubitField {
   // ---------- utilidades ----------
 
   /**
-   * Red de seguridad: el reparto está pensado para que las etiquetas no se toquen, pero
-   * depende del texto y del ángulo de cámara, así que si dos llegan a pisarse se empuja
-   * la de arriba lo justo. El desplazamiento es pequeño y suavizado: no se nota, pero
-   * garantiza que siempre se lean, cambie el contenido que cambie.
+   * Red de seguridad: la cámara se acerca lo justo para que las etiquetas de las hijas
+   * quepan seguidas, pero eso depende del texto y de la forma de la ventana. En un
+   * encuadre muy bajo y ancho la cámara tiene que retroceder para que quepan las dos
+   * filas, las columnas se estrechan y las etiquetas se rozan. Entonces esto las escalona.
+   *
+   * Se recorren **en su orden de la retícula**, de izquierda a derecha, y cada una pasa
+   * por encima de las anteriores con las que se cruce. El orden fijo es lo importante:
+   * antes se ordenaban por su altura medida, que parecía lo natural, pero están todas en
+   * la misma fila y cualquier temblor de un píxel les cambiaba el orden; la escalera se
+   * rehacía al revés cada fotograma y se quedaban oscilando unas encima de otras sin
+   * llegar a separarse nunca. El nombre de la sección no se mueve: hace de obstáculo.
    */
   private separateLabels(hub: Hub, dt: number): void {
-    // Margen holgado y ajuste rápido: los cúbits respiran en vertical, así que con poco
-    // hueco la red va por detrás del movimiento y deja solapes de uno o dos fotogramas.
+    // Margen holgado: los cúbits respiran en vertical, así que con poco hueco la red va
+    // por detrás del movimiento y deja solapes de uno o dos fotogramas.
     const GAP = 10;
-    const movable: Array<{ label: CSS2DObject; dy: number }> = [...hub.subs, hub];
-    const boxes = movable
-      .filter((s) => s.label.visible)
-      .map((s) => {
-        const r = (s.label.element.firstElementChild as HTMLElement).getBoundingClientRect();
-        return { s, left: r.left, right: r.right, top: r.top - s.dy, height: r.height, target: 0 };
-      })
-      .filter((b) => b.height > 0)
-      .sort((a, b) => a.top - b.top);
+    const measure = (s: { label: CSS2DObject; dy: number }) => {
+      const r = (s.label.element.firstElementChild as HTMLElement).getBoundingClientRect();
+      return { s, left: r.left, right: r.right, top: r.top - s.dy, height: r.height, target: 0 };
+    };
+    const boxes = hub.subs.filter((s) => s.label.visible).map(measure).filter((b) => b.height > 0);
+    // La sección solo estorba mientras se apaga: abierta del todo su etiqueta no se ve.
+    const fixed =
+      hub.label.visible && hub.active < 0.5 ? [measure(hub)].filter((b) => b.height > 0) : [];
 
-    // De abajo arriba: cada etiqueta empuja a las que tenga encima y se le monten.
-    for (let k = boxes.length - 1; k >= 0; k--) {
-      const lower = boxes[k];
-      const lowerTop = lower.top + lower.target;
-      for (let m = k - 1; m >= 0; m--) {
-        const upper = boxes[m];
-        if (upper.right < lower.left || upper.left > lower.right) continue;
-        const upperBottom = upper.top + upper.target + upper.height;
-        if (upperBottom + GAP > lowerTop) upper.target = lowerTop - GAP - upper.height - upper.top;
+    for (let k = 0; k < boxes.length; k++) {
+      const b = boxes[k];
+      for (const a of k > 0 ? [...boxes.slice(0, k), ...fixed] : fixed) {
+        if (a.right < b.left || a.left > b.right) continue; // no se cruzan de ancho
+        const aTop = a.top + a.target;
+        const bTop = b.top + b.target;
+        if (bTop >= aTop + a.height + GAP || aTop >= bTop + b.height + GAP) continue; // ya se libran
+        b.target = aTop - GAP - b.height - b.top;
       }
     }
 
-    for (const s of movable) {
-      const box = boxes.find((b) => b.s === s);
-      s.dy = easeTo(s.dy, box ? box.target : 0, dt, 18);
-      (s.label.element.firstElementChild as HTMLElement).style.setProperty('--dy', `${s.dy.toFixed(1)}px`);
+    for (const b of boxes) {
+      b.s.dy = easeTo(b.s.dy, b.target, dt, 18);
+      (b.s.label.element.firstElementChild as HTMLElement).style.setProperty('--dy', `${b.s.dy.toFixed(1)}px`);
     }
+    hub.dy = 0;
   }
 
   private bootOf(i: number): number {

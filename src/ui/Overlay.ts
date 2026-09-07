@@ -9,6 +9,7 @@ export class Overlay {
   private readonly title: HTMLElement;
   private readonly desc: HTMLElement;
   private readonly list: HTMLElement;
+  private readonly bigName: HTMLElement;
   private readonly toastEl: HTMLElement;
   private readonly qubitCount: HTMLElement;
   private readonly circuitLine: HTMLElement;
@@ -19,6 +20,7 @@ export class Overlay {
     this.title = root.querySelector('.panel-title')!;
     this.desc = root.querySelector('.panel-desc')!;
     this.list = root.querySelector('.panel-list')!;
+    this.bigName = root.querySelector('#territory-name')!;
     this.toastEl = root.querySelector('#toast')!;
     this.qubitCount = root.querySelector('#qubit-count')!;
     this.circuitLine = root.querySelector('#circuit')!;
@@ -27,6 +29,11 @@ export class Overlay {
   }
 
   showItem(item: Territory): void {
+    // El nombre a cuerpo grande, a la izquierda. Es el único sitio donde el título de la
+    // sección tiene tamaño de titular: en la escena su etiqueta se apaga al abrirla, y en
+    // el panel va como cabecera de la lista. Tres veces el mismo nombre sobraba.
+    this.bigName.firstElementChild!.textContent = item.label;
+    this.bigName.classList.add('show');
     this.title.textContent = item.label;
     this.desc.textContent = item.description;
 
@@ -57,6 +64,7 @@ export class Overlay {
   }
 
   hide(): void {
+    this.bigName.classList.remove('show');
     this.panel.classList.remove('open');
     this.panel.setAttribute('aria-hidden', 'true');
   }

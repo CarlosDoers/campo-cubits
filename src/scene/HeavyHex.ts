@@ -24,7 +24,7 @@ export interface Topology {
 
 const ROWS = 8;
 export const COLS = 16;
-const COL_PITCH = 1;
+export const COL_PITCH = 1;
 const ROW_PITCH = 2;
 export const BRIDGE_COLS = [
   [0, 4, 8, 12],

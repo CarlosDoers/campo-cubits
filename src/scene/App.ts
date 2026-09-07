@@ -8,6 +8,7 @@ import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { QUBIT_COUNT, type SubItem, type Territory } from '../menu';
 import type { Overlay } from '../ui/Overlay';
 import { QubitField, type HitInfo } from './QubitField';
+import { COL_PITCH } from './HeavyHex';
 import { Ground } from './Ground';
 import { PALETTE } from '../palette';
 import { easeTo } from './helpers';
@@ -17,18 +18,41 @@ interface Pose {
   target: THREE.Vector3;
 }
 
-/** Inclinacion del plano general: cuanto se mira el chip desde arriba. */
-const OVERVIEW_PITCH = 0.8;
-/** Lo que el sustrato sobresale de la retícula, en media diagonal (ver `Ground`). */
-const DIE_OVERHANG = 1.9;
 /**
- * Inclinación al enfocar un territorio: mucho más rasante que el plano general, para
- * que el chip se vea casi de canto y las subsecciones se lean flotando **sobre** él.
- * Debe quedar por debajo de `maxPolarAngle`, o los controles la recortarían al soltar.
+ * Plano general. La cámara se queda **baja y cerca**: el chip se ve casi de canto, ocupa
+ * la mitad inferior del encuadre y su borde cercano se sale por los lados. Se encuadra
+ * por el ancho a la altura del centro, no por la diagonal: como ya no gira, el caso peor
+ * no es la diagonal sino el propio ancho, y dejar que el borde cercano rebose es lo que
+ * da la perspectiva.
  */
+const OVERVIEW_PITCH = 0.3;
+const OVERVIEW_FILL = 0.8; // parte del ancho del encuadre que ocupa el chip a media distancia
+const OVERVIEW_RAISE = 0.9; // se sube el objetivo para que el chip caiga en la mitad de abajo
+/** Lo que el sustrato sobresale de la retícula por cada lado (ver `Ground`). */
+const DIE_MARGIN = 1.3;
 /** Por debajo de este ancho el panel se va abajo y no hay que correr nada. */
 const NARROW_PX = 760;
-const FOCUS_PITCH = 0.42; // inclinación al enfocar: lo justo para ver el plano de las dos filas
+/**
+ * Inclinación al enfocar un territorio: **picado**, al revés que el plano general.
+ * Rasante (iba a 0,42 rad) las dos filas se aplastaban una contra otra y el subnivel no
+ * se leía como una fila encima de su sección, sino como un montón. Desde arriba la
+ * separación vertical entre filas sale casi el doble que el paso entre columnas y la
+ * retícula se lee como lo que es. Debe quedar dentro del rango de los controles
+ * (`minPolarAngle`), o lo recortarían al soltar la cámara.
+ */
+const FOCUS_PITCH = 1.0;
+/**
+ * Sitio en pantalla que necesita la etiqueta de una subsección. La cámara se acerca hasta
+ * que **una columna del chip ocupa estos píxeles**: así las etiquetas caben seguidas
+ * encima de cada esfera sin tener que separar las esferas entre sí, que era el apaño de
+ * antes. Y de paso el vuelo se nota mucho más, que es la gracia.
+ */
+const LABEL_ROOM = 235;
+/** Ancho del panel de sección (ver `style.css`): media rendija es lo que hay que correr. */
+const PANEL_PX = 380;
+/** Altura del objetivo y reparto entre las dos filas: la sección abajo, las hijas encima. */
+const TARGET_Y = 0.7;
+const TARGET_LERP = 0.55;
 const FLIGHT_SECONDS = 1.6;
 /** Retirada de cámara de la entrada: acompaña al encendido del chip. */
 const INTRO_SECONDS = 3.4;
@@ -100,8 +124,6 @@ export class App {
     this.controls.maxDistance = 34;
     this.controls.minPolarAngle = 0.35;
     this.controls.maxPolarAngle = 1.32;
-    this.controls.autoRotate = true;
-    this.controls.autoRotateSpeed = 0.25;
 
     // --- objetos ---
     this.field = new QubitField(items, QUBIT_COUNT);
@@ -141,7 +163,6 @@ export class App {
       this.overlay.hide();
       this.flyTo(this.overview);
     }
-    this.controls.autoRotate = !item;
   }
 
   /** Vuelo suave de cámara hasta una pose; los controles se reactivan al llegar. */
@@ -281,17 +302,21 @@ export class App {
     const { width, depth } = this.field.topology;
     const vFov = THREE.MathUtils.degToRad(this.camera.fov);
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * this.camera.aspect);
-    // El chip gira despacio, así que el caso peor no es su lado mayor sino su diagonal,
-    // más lo que el sustrato sobresale de la retícula.
-    const half = Math.hypot(width, depth) / 2 + DIE_OVERHANG;
-    // Y hay que contar con la perspectiva: el borde cercano está `half·cos(pitch)` más
-    // cerca de la cámara que el centro, así que se proyecta bastante más grande. Con la
-    // fórmula ortográfica de antes el chip se salía por la esquina de abajo.
-    const near = half * Math.cos(OVERVIEW_PITCH);
-    const dist =
-      Math.max((half * Math.sin(OVERVIEW_PITCH)) / Math.tan(vFov / 2), half / Math.tan(hFov / 2)) + near;
-    this.overview.target.set(0, 0.4, 0);
-    this.overview.position.set(0, dist * Math.sin(OVERVIEW_PITCH), dist * Math.cos(OVERVIEW_PITCH));
+    const halfW = width / 2 + DIE_MARGIN;
+    const halfD = depth / 2 + DIE_MARGIN;
+    // En vertical manda el borde cercano, que está `halfD·cos` más cerca de la cámara y
+    // por eso se proyecta mucho más grande. En horizontal, el ancho a media distancia.
+    const distV =
+      (halfD * Math.sin(OVERVIEW_PITCH) + OVERVIEW_RAISE) / Math.tan(vFov / 2) +
+      halfD * Math.cos(OVERVIEW_PITCH);
+    const distH = halfW / (OVERVIEW_FILL * Math.tan(hFov / 2));
+    const dist = Math.max(distV, distH);
+    this.overview.target.set(0, OVERVIEW_RAISE, 0);
+    this.overview.position.set(
+      0,
+      OVERVIEW_RAISE + dist * Math.sin(OVERVIEW_PITCH),
+      dist * Math.cos(OVERVIEW_PITCH),
+    );
   }
 
   /**
@@ -307,20 +332,38 @@ export class App {
   private focusPose(f: { hub: THREE.Vector3; children: THREE.Vector3; span: number }): Pose {
     const vFov = THREE.MathUtils.degToRad(this.camera.fov);
     const hFov = 2 * Math.atan(Math.tan(vFov / 2) * this.camera.aspect);
-    // Lo que hay que encajar: el ancho de las hijas con margen, y las dos filas de fondo.
-    const halfW = Math.max(f.span, 6) / 2 + 3.5;
-    const halfD = Math.abs(f.hub.z - f.children.z) / 2 + 3;
-    const near = halfD * Math.cos(FOCUS_PITCH);
-    const dist =
-      Math.max((halfD * Math.sin(FOCUS_PITCH)) / Math.tan(vFov / 2), halfW / Math.tan(hFov / 2)) + near;
+    // Distancia a la que una columna ocupa `LABEL_ROOM` píxeles. Se pide algo más de lo
+    // que mide una etiqueta porque las hijas quedan por detrás del objetivo de la cámara
+    // y se proyectan algo más pequeñas que a la distancia con la que se calcula.
+    const visibleWidth = (this.container.clientWidth / LABEL_ROOM) * COL_PITCH;
+    const byLabels = visibleWidth / 2 / Math.tan(hFov / 2);
+    // Y la mínima para que el grupo entero quepa de todas formas, por si el encuadre es
+    // muy estrecho y acercarse tanto dejaría las hijas de los extremos fuera.
+    const halfW = f.span / 2 + 1.1;
+    const halfD = Math.abs(f.hub.z - f.children.z) / 2 + 0.9;
+    const byFit =
+      Math.max((halfD * Math.sin(FOCUS_PITCH)) / Math.tan(vFov / 2), halfW / Math.tan(hFov / 2)) +
+      halfD * Math.cos(FOCUS_PITCH);
+    const dist = Math.max(byLabels, byFit);
 
     // El objetivo cae entre las dos filas, algo más cerca de las hijas para que la
-    // sección quede abajo; y corrido a la derecha para dejarle sitio al panel.
-    const shift = window.innerWidth < NARROW_PX ? 0 : halfW * 0.42;
+    // sección quede abajo. En horizontal se centra en la **sección**, no en el punto
+    // medio del grupo: el encargo era que la opción marcada quede abajo en el centro.
+    //
+    // Y el desplazamiento del panel se calcula a la profundidad de la sección, que va por
+    // delante del objetivo: la misma distancia en el mundo la corre bastante más en
+    // pantalla, y con un valor fijo se iba medio encuadre a la izquierda.
+    const rowGap = f.hub.z - f.children.z;
+    const depthHub =
+      dist + TARGET_Y * Math.sin(FOCUS_PITCH) - rowGap * TARGET_LERP * Math.cos(FOCUS_PITCH);
+    const shift =
+      window.innerWidth < NARROW_PX
+        ? 0
+        : (PANEL_PX / this.container.clientWidth) * Math.tan(hFov / 2) * depthHub;
     const target = new THREE.Vector3(
-      (f.hub.x + f.children.x) / 2 + shift,
-      0.9,
-      THREE.MathUtils.lerp(f.hub.z, f.children.z, 0.62),
+      f.hub.x + shift,
+      TARGET_Y,
+      THREE.MathUtils.lerp(f.hub.z, f.children.z, TARGET_LERP),
     );
     return {
       position: new THREE.Vector3(
